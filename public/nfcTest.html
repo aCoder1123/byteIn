@@ -4,6 +4,7 @@
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 		<title>NFC Test</title>
+        <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
 	</head>
 	<body>
 		<button id="test">Click to read NFC</button>
@@ -11,26 +12,57 @@
 		<br />
 		<br />
 		<div id="console">Console: <br /></div>
-		<script>
+		<script type="module">
+            import { initializeApp } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-app.js";
+			import { getAuth, createUserWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-auth.js";
+            import { firebaseConfig } from "./scripts/config.js";
+            const app = initializeApp(firebaseConfig);
+			const auth = getAuth(app);
+            let email = "bailey.tuckman@gmail.com"
+            let password = "12345678"
+			createUserWithEmailAndPassword(auth, email, password)
+				.then((userCredential) => {
+					// Signed up
+					const user = userCredential.user;
+					console.log(user)
+				})
+				.catch((error) => {
+					const errorCode = error.code;
+					const errorMessage = error.message;
+					// ..
+				});
 			let button = document.getElementById("test");
 			let consoleDIV = document.getElementById("console");
-			button.onclick = () => {
+			button.onclick = async () => {
+				// const ndef = new NDEFReader();
+				// ndef
+				// 	.scan()
+				// 	.then(() => {
+				// 		consoleDIV.innerText += "Scan started successfully.";
+				// 		ndef.onreadingerror = (event) => {
+				// 			consoleDIV.innerText += "Error! Cannot read data from the NFC tag. Try a different one?";
+				// 		};
+				// 		ndef.onreading = (event) => {
+				// 			consoleDIV.innerText += "NDEF message read. <br>";
+				// 			consoleDIV.innerText += event.toString();
+				// 		};
+				// 	})
+				// 	.catch((error) => {
+				// 		consoleDIV.innerText += `Error! Scan failed to start: ${error}.`;
+				// 	});
+				// ndef.write({ data: "https://developer.mozilla.org/en-US/docs/Web/API/NDEFReader/write", recordType: "URL" }, { overwrite: true }).then((res) => {
+				//     consoleDIV.innerText += "Successfully wrote"
+				// }).catch((err) => {
+				//     consoleDIV.innerText += `Error writing: ${err}`
+				// })
 				const ndef = new NDEFReader();
-				ndef
-					.scan()
-					.then(() => {
-						consoleDIV.innerText += "Scan started successfully.";
-						ndef.onreadingerror = (event) => {
-							consoleDIV.innerText += "Error! Cannot read data from the NFC tag. Try a different one?";
-						};
-						ndef.onreading = (event) => {
-							consoleDIV.innerText += "NDEF message read. <br>";
-							consoleDIV.innerText += event.toString();
-						};
-					})
-					.catch((error) => {
-						consoleDIV.innerText += `Error! Scan failed to start: ${error}.`;
+				try {
+					await ndef.write({
+						records: [{ recordType: "url", data: "https://developer.mozilla.org/en-US/docs/Web/API/NDEFReader/write" }],
 					});
+				} catch {
+					console.log("Write failed :-( try again.");
+				}
 			};
 		</script>
 	</body>
