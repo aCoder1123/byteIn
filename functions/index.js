@@ -7,26 +7,64 @@
  * See a full list of supported triggers at https://firebase.google.com/docs/functions
  */
 
-const {setGlobalOptions} = require("firebase-functions");
-const {onRequest} = require("firebase-functions/https");
+const { setGlobalOptions } = require("firebase-functions");
+const { onRequest } = require("firebase-functions/https");
 const logger = require("firebase-functions/logger");
+const admin = require("firebase-admin");
+const { Timestamp } = require("firebase-admin/firestore");
 
-// For cost control, you can set the maximum number of containers that can be
-// running at the same time. This helps mitigate the impact of unexpected
-// traffic spikes by instead downgrading performance. This limit is a
-// per-function limit. You can override the limit for each function using the
-// `maxInstances` option in the function's options, e.g.
-// `onRequest({ maxInstances: 5 }, (req, res) => { ... })`.
-// NOTE: setGlobalOptions does not apply to functions using the v1 API. V1
-// functions should each use functions.runWith({ maxInstances: 10 }) instead.
-// In the v1 API, each function can only serve one request per container, so
-// this will be the maximum concurrent request count.
+admin.initializeApp();
+const db = admin.firestore();
+
 setGlobalOptions({ maxInstances: 10 });
 
-// Create and deploy your first functions
-// https://firebase.google.com/docs/functions/get-started
+exports.setStatus = onRequest(async (request, response) => {
+	let auth = request.body.auth;
+	let apiKey = await db.collection("settings").doc("apiKey").get();
+	if (!apiKey.data || !(apiKey.data().key == request.body.auth)) {
+		response.status(401).send();
+		return;
+	} else if (!request.body.uid) {
+		response.status(400).send();
+		return;
+	}
+	let tables = db.collection("tableData");
+	let userCheckedIn = await tables.where("uid", "==", request.body.uid).get();
+	let set = false;
+	if (!userCheckedIn.empty && request.body.uid != "-") {
+		userCheckedIn.forEach((doc) => {
+			let data = doc.data();
+			if (doc.id != request.body.table) {
+				data.checkedOut = false;
+				data.uid = "-";
+			} else {
+				set = true;
+				if (request.body.uid == "-") {
+					data.checkedOut = false;
+					data.uid = "-";
+				} else {
+					data.lastCheckout = Timestamp.now();
+				}
+			}
+			db.collection("tableData").doc(doc.id).set(data);
+		});
+	}
+	if (!set) {
+		let doc = await db.collection("tableData").doc(request.body.table).get();
+		let data = doc.data();
+		if (request.body.uid != "-") {
+			data.lastCheckout = Timestamp.now();
+			data.checkedOut = true;
+			data.uid = request.body.uid;
+		} else {
+			data.checkedOut = false;
+			data.uid = "-";
+		}
+		db.collection("tableData").doc(doc.id).set(data);
+	}
 
-// exports.helloWorld = onRequest((request, response) => {
-//   logger.info("Hello logs!", {structuredData: true});
-//   response.send("Hello from Firebase!");
-// });
+	let config = await db.collection("settings").doc("config").get();
+	let configData = config.data();
+	let waitTimeMinutes = configData.waitTime;
+	response.status(200).send({ checkedIn: request.body.uid != "-", delay: waitTimeMinutes });
+});

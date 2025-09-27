@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>NFC Test</title>
+	</head>
+	<body>
+		<button id="test">Click to read NFC</button>
+		<div id="output">NFC OUTPUT</div>
+		<br />
+		<br />
+		<div id="console">Console: <br /></div>
+		<script>
+			let button = document.getElementById("test");
+			let consoleDIV = document.getElementById("console");
+			button.onclick = () => {
+				const ndef = new NDEFReader();
+				ndef
+					.scan()
+					.then(() => {
+						consoleDIV.innerText += "Scan started successfully.";
+						ndef.onreadingerror = (event) => {
+							consoleDIV.innerText += "Error! Cannot read data from the NFC tag. Try a different one?";
+						};
+						ndef.onreading = (event) => {
+							consoleDIV.innerText += "NDEF message read. <br>";
+							consoleDIV.innerText += event.toString();
+						};
+					})
+					.catch((error) => {
+						consoleDIV.innerText += `Error! Scan failed to start: ${error}.`;
+					});
+			};
+		</script>
+	</body>
+</html>
