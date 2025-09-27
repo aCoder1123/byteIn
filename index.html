@@ -10,24 +10,30 @@
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
         import { getFirestore, collection, addDoc, getDocs, doc, updateDoc, deleteDoc } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+        import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
         import { firebaseConfig } from './firebase-config.js';
         
         try {
             // Initialize Firebase
             const app = initializeApp(firebaseConfig);
             const db = getFirestore(app);
+            const auth = getAuth(app);
             
             // Make Firebase functions available globally
             window.firebaseDB = db;
+            window.firebaseAuth = auth;
             window.firebaseCollection = collection;
             window.firebaseAddDoc = addDoc;
             window.firebaseGetDocs = getDocs;
             window.firebaseDoc = doc;
             window.firebaseUpdateDoc = updateDoc;
             window.firebaseDeleteDoc = deleteDoc;
+            window.firebaseOnAuthStateChanged = onAuthStateChanged;
+            window.firebaseSignOut = signOut;
             
             console.log('Firebase initialized successfully');
-        } catch (error) {
+        } catch (error)
+ {
             console.error('Firebase initialization error:', error);
             console.log('Please check your firebase-config.js file and update the configuration');
         }
@@ -38,10 +44,12 @@
         <!-- Navigation -->
         <nav class="nav-bar">
             <div class="nav-container">
-                <h1 class="nav-title">Map Generator</h1>
+                <h1 class="nav-title">Byte-In</h1>
                 <div class="nav-controls">
                     <button id="dashboard-btn" class="nav-btn active">Dashboard</button>
-                    <button id="admin-btn" class="nav-btn">Map Generator</button>
+                    <button id="admin-btn" class="nav-btn admin-only" style="display: none;">Map Generator</button>
+                    <button id="login-btn" class="nav-btn login-btn">Login</button>
+                    <button id="logout-btn" class="nav-btn logout-btn" style="display: none;">Logout</button>
                 </div>
             </div>
         </nav>
@@ -87,71 +95,72 @@
                 <!-- Map Generator Mode -->
                 <div id="map-generator-mode" class="admin-mode">
                     <div class="map-generator-container">
-                        <div class="upload-section">
-                            <h3>Upload Floor Map Image</h3>
-                            <div class="upload-area" id="upload-area">
-                                <input type="file" id="map-image-input" accept="image/*" style="display: none;">
-                                <div class="upload-placeholder">
-                                    <p>Click to upload floor map image</p>
-                                    <p class="upload-hint">Supported formats: JPG, PNG, GIF</p>
-                                    <p class="upload-hint">Or drag and drop an image here</p>
+                        <!-- Left Sidebar -->
+                        <div class="map-sidebar left-sidebar">
+                            <div class="upload-section">
+                                <h3>Upload Floor Map</h3>
+                                <div class="upload-area" id="upload-area">
+                                    <input type="file" id="map-image-input" accept="image/*" style="display: none;">
+                                    <div class="upload-placeholder">
+                                        <p>Click or drag image to upload</p>
+                                        <p class="upload-hint">JPG, PNG, GIF</p>
+                                    </div>
                                 </div>
+                                <input type="file" id="map-file-input" accept=".json" style="display: none;">
                             </div>
-                            <input type="file" id="map-file-input" accept=".json" style="display: none;">
-                        </div>
 
-                        <div class="component-tools">
-                            <h3>Component Tools</h3>
-                            <div class="tool-buttons">
-                                <button id="add-table-btn" class="tool-btn active" data-type="add">
-                                    <span class="tool-icon">🪑</span>
-                                    Add Table
-                                </button>
-                                <button id="assign-tool-btn" class="tool-btn" data-type="assign">
-                                    <span class="tool-icon">🔑</span>
-                                    Assign
-                                </button>
-                            </div>
-                        </div>
-
-                        <div class="map-canvas-container">
-                            <div class="canvas-header">
-                                <h4>Floor Map</h4>
-                                <button id="fullscreen-btn" class="fullscreen-btn" title="Toggle Fullscreen">
-                                    <span class="fullscreen-icon">⛶</span>
-                                </button>
-                            </div>
-                            <div id="map-canvas" class="map-canvas">
-                                <div class="canvas-placeholder">
-                                    <p>Upload an image to start creating your map</p>
+                            <div class="component-tools">
+                                <h3>Component Tools</h3>
+                                <div class="tool-buttons">
+                                    <button id="add-table-btn" class="tool-btn active" data-type="add">
+                                        Add Table
+                                    </button>
+                                    <button id="assign-tool-btn" class="tool-btn" data-type="assign">
+                                        Assign
+                                    </button>
                                 </div>
                             </div>
-                        </div>
-
-                        <div class="component-properties" id="component-properties" style="display: none;">
-                            <h3>Component Properties</h3>
-                            <div class="property-form">
-                                <div class="form-group">
-                                    <label for="component-name">Name/Number:</label>
-                                    <input type="text" id="component-name" placeholder="Table 1, Zone A, etc.">
-                                </div>
-                                <div class="form-group">
-                                    <label for="component-capacity">Capacity:</label>
-                                    <input type="number" id="component-capacity" min="1" placeholder="2">
-                                </div>
-                                <div class="form-actions">
-                                    <button id="save-component-btn" class="action-btn save-btn">Save Component</button>
-                                    <button id="delete-component-btn" class="action-btn delete-btn">Delete</button>
+                            
+                            <!-- Component Properties MOVED HERE -->
+                            <div class="component-properties" id="component-properties" style="display: none;">
+                                <h3>Component Properties</h3>
+                                <div class="property-form">
+                                    <div class="form-group">
+                                        <label for="component-name">Name/Number:</label>
+                                        <input type="text" id="component-name" placeholder="Table 1, Zone A, etc.">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="component-capacity">Capacity:</label>
+                                        <input type="number" id="component-capacity" min="1" placeholder="2">
+                                    </div>
+                                    <div class="form-actions">
+                                        <button id="save-component-btn" class="action-btn save-btn">Save Component</button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
 
-                        <div class="map-actions">
-                            <button id="save-map-firebase-btn" class="action-btn save-map-btn">Save to Firebase</button>
-                            <button id="download-map-btn" class="action-btn download-btn">Download Map</button>
-                            <button id="upload-map-btn" class="action-btn upload-map-btn">Upload Map File</button>
-                            <button id="sync-map-btn" class="action-btn sync-btn">Sync with Tables</button>
-                            <button id="reset-map-btn" class="action-btn reset-btn">Reset Map</button>
+                        <!-- Main Content -->
+                        <div class="map-main-content">
+                            <div class="map-canvas-container">
+                                <div class="canvas-header">
+                                    <h4>Floor Map</h4>
+                                    <button id="fullscreen-btn" class="fullscreen-btn" title="Toggle Fullscreen">
+                                        <span class="fullscreen-icon">⛶</span>
+                                    </button>
+                                </div>
+                                <div id="map-canvas" class="map-canvas">
+                                    <div class="canvas-placeholder">
+                                        <p>Upload an image to start creating your map</p>
+                                    </div>
+                                </div>
+                            </div>
+                             <div class="map-actions">
+                                <button id="save-map-firebase-btn" class="action-btn save-map-btn">Save</button>
+                                <button id="download-map-btn" class="action-btn download-btn">Download Map</button>
+                                <button id="sync-map-btn" class="action-btn sync-btn">Sync with Tables</button>
+                                <button id="reset-map-btn" class="action-btn reset-btn">Reset Map</button>
+                            </div>
                         </div>
                     </div>
                 </div>

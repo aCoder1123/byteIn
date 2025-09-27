@@ -16,11 +16,16 @@ class TableManager {
         this.currentMapImage = null;
         this.mapComponents = [];
         this.selectedComponent = null;
-        this.currentTool = 'table';
+        this.currentTool = 'add'; // Default tool is 'add'
         this.componentCounter = 1;
+        
+        // Authentication properties
+        this.isAuthenticated = false;
+        this.currentUser = null;
         
         this.init();
         this.loadFirebaseMaps();
+        this.initAuth();
     }
 
     // Generate sample floor data with some occupied tables
@@ -56,7 +61,20 @@ class TableManager {
         });
 
         document.getElementById('admin-btn').addEventListener('click', () => {
-            this.switchToAdmin();
+            if (this.isAuthenticated) {
+                this.switchToAdmin();
+            } else {
+                this.showNotification('Please log in to access Map Generator', 'error');
+            }
+        });
+
+        // Authentication buttons
+        document.getElementById('login-btn').addEventListener('click', () => {
+            window.location.href = './public/signIn.html';
+        });
+
+        document.getElementById('logout-btn').addEventListener('click', () => {
+            this.signOut();
         });
 
         // Floor selection for dashboard
@@ -83,16 +101,17 @@ class TableManager {
         });
 
         // Drag and drop for image upload
-        document.getElementById('upload-area').addEventListener('dragover', (e) => {
+        const uploadArea = document.getElementById('upload-area');
+        uploadArea.addEventListener('dragover', (e) => {
             e.preventDefault();
             e.currentTarget.classList.add('dragover');
         });
 
-        document.getElementById('upload-area').addEventListener('dragleave', (e) => {
+        uploadArea.addEventListener('dragleave', (e) => {
             e.currentTarget.classList.remove('dragover');
         });
 
-        document.getElementById('upload-area').addEventListener('drop', (e) => {
+        uploadArea.addEventListener('drop', (e) => {
             e.preventDefault();
             e.currentTarget.classList.remove('dragover');
             const files = e.dataTransfer.files;
@@ -118,9 +137,6 @@ class TableManager {
             this.saveComponentProperties();
         });
 
-        document.getElementById('delete-component-btn').addEventListener('click', () => {
-            this.deleteSelectedComponent();
-        });
 
         // Map actions
 
@@ -135,10 +151,6 @@ class TableManager {
         // Download/Upload functionality
         document.getElementById('download-map-btn').addEventListener('click', () => {
             this.downloadMap();
-        });
-
-        document.getElementById('upload-map-btn').addEventListener('click', () => {
-            document.getElementById('map-file-input').click();
         });
 
         // Firebase Save button
@@ -293,38 +305,39 @@ class TableManager {
         console.log("Component positions (normalized):", components.map(c => ({x: c.x, y: c.y})));
 
         components
-            .filter(component => component.type === 'table')
+            .filter(component => component.type === 'table' || component.type === 'add')
             .forEach(component => {
                 const tableElement = document.createElement('div');
                 tableElement.className = 'dashboard-table-component';
                 tableElement.style.position = 'absolute';
                 
                 // Convert normalized coordinates (0-1) to pixel positions
-                // Add back the 20px offset that was subtracted during coordinate capture
-                const pixelX = component.x * currentDisplayedWidth + 10;
+                const pixelX = component.x * currentDisplayedWidth;
                 const pixelY = component.y * currentDisplayedHeight;
                 
                 tableElement.style.left = `${pixelX}px`;
                 tableElement.style.top = `${pixelY}px`;
                 
                 // Scale the component size proportionally based on image size
-                const baseSize = 30;
+                const baseSize = 24;
                 const scaleFactor = Math.min(currentDisplayedWidth / 800, currentDisplayedHeight / 600);
-                const scaledSize = Math.max(15, Math.min(50, baseSize * scaleFactor));
+                const scaledSize = Math.max(12, Math.min(40, baseSize * scaleFactor));
                 tableElement.style.width = `${scaledSize}px`;
                 tableElement.style.height = `${scaledSize}px`;
                 
                 tableElement.style.backgroundColor = component.occupied ? 'rgba(231, 76, 60, 0.8)' : 'rgba(52, 152, 219, 0.8)';
-                tableElement.style.border = `2px solid ${component.occupied ? '#e74c3c' : '#3498db'}`;
+                tableElement.style.border = `2px solid ${component.occupied ? '#c0392b' : '#2980b9'}`;
                 tableElement.style.borderRadius = '50%';
                 tableElement.style.display = 'flex';
                 tableElement.style.alignItems = 'center';
                 tableElement.style.justifyContent = 'center';
                 tableElement.style.color = 'white';
                 tableElement.style.fontWeight = 'bold';
-                tableElement.style.fontSize = `${Math.max(0.6, scaledSize * 0.02)}rem`;
+                tableElement.style.fontSize = `${Math.max(0.7, scaledSize * 0.025)}rem`;
                 tableElement.style.cursor = 'default';
                 tableElement.style.zIndex = '10';
+                tableElement.style.transform = 'translate(-50%, -50%)';
+
 
                 // Add occupied indicator with scaled size
                 if (component.occupied) {
@@ -354,13 +367,15 @@ class TableManager {
 
                 // Add hover effect (view only)
                 tableElement.addEventListener('mouseenter', () => {
-                    tableElement.style.transform = 'scale(1.1)';
-                    tableElement.style.boxShadow = '0 4px 12px rgba(52, 152, 219, 0.4)';
+                    tableElement.style.transform = 'translate(-50%, -50%) scale(1.1)';
+                    tableElement.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.2)';
+                    tableElement.style.zIndex = '20';
                 });
 
                 tableElement.addEventListener('mouseleave', () => {
-                    tableElement.style.transform = 'scale(1)';
+                    tableElement.style.transform = 'translate(-50%, -50%) scale(1)';
                     tableElement.style.boxShadow = 'none';
+                    tableElement.style.zIndex = '10';
                 });
 
                 container.appendChild(tableElement);
@@ -372,16 +387,21 @@ class TableManager {
         const notification = document.createElement('div');
         notification.className = `notification ${type}`;
         notification.textContent = message;
+        
+        let backgroundColor = '#3498db'; // Default info
+        if(type === 'success') backgroundColor = '#27ae60';
+        if(type === 'error') backgroundColor = '#e74c3c';
+
         notification.style.cssText = `
             position: fixed;
             top: 20px;
             right: 20px;
-            background-color: ${type === 'success' ? '#27ae60' : '#3498db'};
+            background-color: ${backgroundColor};
             color: white;
             padding: 1rem 1.5rem;
             border-radius: 4px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-            z-index: 1000;
+            z-index: 10000;
             animation: slideIn 0.3s ease;
         `;
 
@@ -389,7 +409,7 @@ class TableManager {
 
         // Remove notification after 3 seconds
         setTimeout(() => {
-            notification.style.animation = 'slideOut 0.3s ease';
+            notification.style.animation = 'slideOut 0.3s ease forwards';
             setTimeout(() => {
                 if (notification.parentNode) {
                     notification.parentNode.removeChild(notification);
@@ -506,6 +526,11 @@ class TableManager {
     }
 
     handleCanvasClick(e) {
+        if (this.currentTool === 'assign') {
+            this.showNotification('Click on a table to assign it, not the map.', 'info');
+            return;
+        }
+        
         if (this.currentTool === 'select') {
             return; // Selection is handled by component clicks
         }
@@ -519,8 +544,6 @@ class TableManager {
         const rect = canvas.getBoundingClientRect();
         const canvasX = e.clientX - rect.left;
         const canvasY = e.clientY - rect.top;
-
-        console.log("Canvas: ", canvasX, canvasY);
 
         // Get the actual image element to calculate its position within the canvas
         const img = canvas.querySelector('img');
@@ -539,19 +562,27 @@ class TableManager {
         // Convert canvas coordinates to image-relative coordinates
         const imageX = canvasX - imageOffsetX;
         const imageY = canvasY - imageOffsetY;
-
-        // Centers the click
-        const normX = (imageX - 20) / imgWidth;
-        const normY = (imageY - 20) / imgHeight;
+        
+        // Normalize coordinates to be between 0 and 1
+        const normX = imageX / imgWidth;
+        const normY = imageY / imgHeight;
+        
+        // Ignore clicks outside the image bounds
+        if (normX < 0 || normX > 1 || normY < 0 || normY > 1) {
+            return;
+        }
 
         this.createComponent(normX, normY);
     }
 
     createComponent(x, y) {
+        const componentType = 'table';
+        const componentName = `Table ${this.componentCounter}`;
+
         const component = {
             id: `component-${this.componentCounter++}`,
-            type: this.currentTool,
-            name: `${this.currentTool.charAt(0).toUpperCase() + this.currentTool.slice(1)} ${this.componentCounter - 1}`,
+            type: componentType,
+            name: componentName,
             x: x,
             y: y,
             capacity: 2,
@@ -594,16 +625,40 @@ class TableManager {
             element.dataset.componentId = component.id;
             
             // Position component relative to canvas, accounting for image offset
-            // Add back the 20px offset that was subtracted during coordinate capture
-            element.style.left = `${component.x * imgWidth + imageOffsetX}px`;
-            element.style.top = `${component.y * imgHeight + imageOffsetY}px`;
+            const pixelX = (component.x * imgWidth) + imageOffsetX;
+            const pixelY = (component.y * imgHeight) + imageOffsetY;
+            
+            element.style.left = `${pixelX}px`;
+            element.style.top = `${pixelY}px`;
 
             if (component.occupied) {
                 element.classList.add('occupied');
             }
             
             element.textContent = component.name.replace(/[^\d]/g, '') || '?';
-            element.title = `${component.name} (${component.type})`;
+            element.title = `${component.name} (Capacity: ${component.capacity})`;
+            
+            // Create delete X button
+            const deleteBtn = document.createElement('div');
+            deleteBtn.className = 'component-delete-btn';
+            deleteBtn.innerHTML = '×';
+            deleteBtn.title = 'Delete component';
+            
+            deleteBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (confirm(`Are you sure you want to delete ${component.name}?`)) {
+                    this.mapComponents = this.mapComponents.filter(c => c.id !== component.id);
+                    this.selectedComponent = null;
+                    this.renderMapComponents();
+                    this.updateComponentProperties();
+                    this.showNotification('Component deleted', 'success');
+                    
+                    // Auto-save to Firebase if we have a current map loaded from Firebase
+                    this.autoSaveToFirebase();
+                }
+            });
+            
+            element.appendChild(deleteBtn);
             
             element.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -724,7 +779,7 @@ class TableManager {
             this.selectedComponent = null;
 
             if (this.currentMapImage) {
-                this.displayMapImage();
+                this.displayMapImage(false); // don't clear components when loading
             }
             
             this.renderMapComponents();
@@ -785,7 +840,7 @@ class TableManager {
             return;
         }
 
-        const tableComponents = this.mapComponents.filter(c => c.type === 'table');
+        const tableComponents = this.mapComponents.filter(c => c.type === 'table' || c.type === 'add');
         if (tableComponents.length === 0) {
             this.showNotification('No table components found in the map', 'error');
             return;
@@ -803,21 +858,25 @@ class TableManager {
     }
 
     toggleFullscreen() {
-        const canvas = document.getElementById('map-canvas');
+        const canvasContainer = document.getElementById('map-canvas-container');
         const fullscreenBtn = document.getElementById('fullscreen-btn');
         const fullscreenIcon = fullscreenBtn.querySelector('.fullscreen-icon');
         
-        if (canvas.classList.contains('fullscreen')) {
+        if (canvasContainer.classList.contains('fullscreen')) {
             // Exit fullscreen
-            canvas.classList.remove('fullscreen');
+            canvasContainer.classList.remove('fullscreen');
             fullscreenIcon.textContent = '⛶';
             document.body.style.overflow = '';
         } else {
             // Enter fullscreen
-            canvas.classList.add('fullscreen');
+            canvasContainer.classList.add('fullscreen');
             fullscreenIcon.textContent = '✕';
             document.body.style.overflow = 'hidden';
         }
+        
+        // We need to re-render components after a short delay to allow the CSS transition to complete
+        // and get the new correct dimensions of the image.
+        setTimeout(() => this.renderMapComponents(), 100);
     }
 
     downloadMap() {
@@ -916,9 +975,10 @@ class TableManager {
         // Display the map
         if (this.currentMapImage) {
             this.displayMapImage(false);
+        } else {
+            this.renderMapComponents();
         }
         
-        this.renderMapComponents();
         this.updateComponentProperties();
     }
 
@@ -1100,6 +1160,56 @@ class TableManager {
         } catch (error) {
             console.error('Error auto-saving to Firebase:', error);
             // Don't show error notification for auto-save failures to avoid spam
+        }
+    }
+
+    // Authentication Methods
+    initAuth() {
+        if (window.firebaseOnAuthStateChanged && window.firebaseAuth) {
+            window.firebaseOnAuthStateChanged(window.firebaseAuth, (user) => {
+                if (user) {
+                    this.isAuthenticated = true;
+                    this.currentUser = user;
+                    this.updateAuthUI(true);
+                } else {
+                    this.isAuthenticated = false;
+                    this.currentUser = null;
+                    this.updateAuthUI(false);
+                }
+            });
+        }
+    }
+
+    updateAuthUI(isAuthenticated) {
+        const loginBtn = document.getElementById('login-btn');
+        const logoutBtn = document.getElementById('logout-btn');
+        const adminBtn = document.getElementById('admin-btn');
+
+        if (isAuthenticated) {
+            // User is logged in
+            if (loginBtn) loginBtn.style.display = 'none';
+            if (logoutBtn) logoutBtn.style.display = 'inline-block';
+            if (adminBtn) adminBtn.style.display = 'inline-block';
+        } else {
+            // User is not logged in
+            if (loginBtn) loginBtn.style.display = 'inline-block';
+            if (logoutBtn) logoutBtn.style.display = 'none';
+            if (adminBtn) adminBtn.style.display = 'none';
+            
+            // Switch to dashboard if user is not authenticated
+            this.switchToDashboard();
+        }
+    }
+
+    async signOut() {
+        if (window.firebaseSignOut && window.firebaseAuth) {
+            try {
+                await window.firebaseSignOut(window.firebaseAuth);
+                this.showNotification('Signed out successfully', 'success');
+            } catch (error) {
+                console.error('Sign out error:', error);
+                this.showNotification('Error signing out', 'error');
+            }
         }
     }
 }

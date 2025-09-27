@@ -11,7 +11,7 @@ let btn = document.getElementById("submitBtn");
 btn.onclick = () => {
     signInWithEmailAndPassword(auth, email.value, password.value)
 			.then((userCredential) => {
-				// window.location.replace("./index.html")
+				window.location.replace("../index.html")
 			})
 			.catch((error) => {
 				const errorCode = error.code;
@@ -22,12 +22,8 @@ btn.onclick = () => {
 }
 
 onAuthStateChanged(auth, (user) => {
-    console.log("checking")
 	if (user) {
-        console.log("signed in")
-		window.location.href = ("./index.html")
-	} else {
-        console.log("signedOut")
-    }
+		window.location.href = ("../index.html")
+	}
 });
 
