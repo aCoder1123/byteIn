@@ -51,6 +51,10 @@ exports.setStatus = onRequest(async (request, response) => {
 	}
 	if (!set) {
 		let doc = await db.collection("tableData").doc(request.body.table).get();
+		if (!doc.exists) {
+			response.status(400).send("No table with the supplied id exists")
+			return
+		}
 		let data = doc.data();
 		if (request.body.uid != "-") {
 			data.lastCheckout = Timestamp.now();

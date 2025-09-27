@@ -4,7 +4,7 @@
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 		<title>NFC Test</title>
-        <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+		<link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon" />
 	</head>
 	<body>
 		<button id="test">Click to read NFC</button>
@@ -13,24 +13,25 @@
 		<br />
 		<div id="console">Console: <br /></div>
 		<script type="module">
-            import { initializeApp } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-app.js";
-			import { getAuth, createUserWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-auth.js";
-            import { firebaseConfig } from "./scripts/config.js";
-            const app = initializeApp(firebaseConfig);
-			const auth = getAuth(app);
-            let email = "bailey.tuckman@gmail.com"
-            let password = "12345678"
-			createUserWithEmailAndPassword(auth, email, password)
-				.then((userCredential) => {
-					// Signed up
-					const user = userCredential.user;
-					console.log(user)
-				})
-				.catch((error) => {
-					const errorCode = error.code;
-					const errorMessage = error.message;
-					// ..
-				});
+			// import { initializeApp } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-app.js";
+			// import { getAuth, createUserWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-auth.js";
+			// import { firebaseConfig } from "./scripts/config.js";
+			// const app = initializeApp(firebaseConfig);
+			// const auth = getAuth(app);
+			// let email = "bailey.tuckman@gmail.com";
+			// let password = "12345678";
+			// createUserWithEmailAndPassword(auth, email, password)
+			// 	.then((userCredential) => {
+			// 		// Signed up
+			// 		const user = userCredential.user;
+			// 		console.log(user);
+			// 	})
+			// 	.catch((error) => {
+			// 		const errorCode = error.code;
+			// 		const errorMessage = error.message;
+			// 		// ..
+			// 	});
+
 			let button = document.getElementById("test");
 			let consoleDIV = document.getElementById("console");
 			button.onclick = async () => {
@@ -55,14 +56,28 @@
 				// }).catch((err) => {
 				//     consoleDIV.innerText += `Error writing: ${err}`
 				// })
+				consoleDIV.innerText += "Writing";
+
 				const ndef = new NDEFReader();
-				try {
-					await ndef.write({
-						records: [{ recordType: "url", data: "https://developer.mozilla.org/en-US/docs/Web/API/NDEFReader/write" }],
+
+				let data = `{
+                    table: ${"table"},
+                    apiKey: ${"apiKey"},
+                    ssid: ${"ssid"},
+                    networkPwd: ${"networkPwd"}
+                }`;
+				let payload = {
+					records: [{ recordType: "text", data: data }],
+				};
+
+				await ndef
+					.write(payload)
+					.then(() => {
+						consoleDIV.innerText += "Successfully wrote";
+					})
+					.catch((err) => {
+						consoleDIV.innerText += `Error writing: ${err}`;
 					});
-				} catch {
-					console.log("Write failed :-( try again.");
-				}
 			};
 		</script>
 	</body>
