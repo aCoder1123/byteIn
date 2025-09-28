@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Firebase Integration Demo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 2rem;
+            background: #f5f5f5;
+        }
+        .demo-container {
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .step {
+            margin: 1.5rem 0;
+            padding: 1rem;
+            border-left: 4px solid #3498db;
+            background: #f8f9fa;
+        }
+        .step h3 {
+            margin-top: 0;
+            color: #2c3e50;
+        }
+        .code-block {
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 1rem;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            margin: 1rem 0;
+            overflow-x: auto;
+        }
+        .feature-list {
+            list-style: none;
+            padding: 0;
+        }
+        .feature-list li {
+            padding: 0.5rem 0;
+            border-bottom: 1px solid #eee;
+        }
+        .feature-list li:before {
+            content: "✅ ";
+            margin-right: 0.5rem;
+        }
+        .warning {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+            padding: 1rem;
+            border-radius: 4px;
+            margin: 1rem 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="demo-container">
+        <h1>🔥 Firebase Integration Demo</h1>
+        
+        <div class="step">
+            <h3>What's New?</h3>
+            <p>Your table management system now includes Firebase integration for storing and retrieving custom maps!</p>
+            
+            <ul class="feature-list">
+                <li>Save custom maps to Firebase cloud storage</li>
+                <li>Load any previously saved map from anywhere</li>
+                <li>Share maps across different devices and users</li>
+                <li>Persistent storage that survives browser refreshes</li>
+                <li>Map selection dropdown with floor information</li>
+            </ul>
+        </div>
+
+        <div class="step">
+            <h3>How It Works</h3>
+            <p>When you create a custom map with the map generator:</p>
+            <ol>
+                <li><strong>Create:</strong> Upload image, add table components, customize layout</li>
+                <li><strong>Save to Firebase:</strong> Click "Save to Firebase" and give your map a name</li>
+                <li><strong>Access Anywhere:</strong> Anyone can now select and load this map from the dropdown</li>
+                <li><strong>Manage Tables:</strong> Use the loaded map in "Manage Tables" view with full interactivity</li>
+            </ol>
+        </div>
+
+        <div class="step">
+            <h3>Setup Instructions</h3>
+            <p>To enable Firebase functionality:</p>
+            <ol>
+                <li>Create a Firebase project at <a href="https://console.firebase.google.com/" target="_blank">Firebase Console</a></li>
+                <li>Enable Firestore Database</li>
+                <li>Update <code>firebase-config.js</code> with your project configuration</li>
+                <li>Set Firestore rules for development (see FIREBASE_SETUP.md)</li>
+            </ol>
+            
+            <div class="warning">
+                <strong>Note:</strong> The app works without Firebase too! Local storage and file download/upload are still available for offline use.
+            </div>
+        </div>
+
+        <div class="step">
+            <h3>Data Structure</h3>
+            <p>Maps are stored in Firebase with this structure:</p>
+            <div class="code-block">
+{
+  name: "Floor 1 Map",
+  image: "data:image/jpeg;base64...", // Base64 encoded image
+  components: [
+    {
+      id: 1,
+      type: "table", 
+      x: 100,
+      y: 150,
+      occupied: false
+    }
+  ],
+  createdAt: "2024-01-15T10:30:00.000Z",
+  updatedAt: "2024-01-15T10:30:00.000Z"
+}
+
+// Document ID: "1" (represents Floor 1)
+            </div>
+        </div>
+
+        <div class="step">
+            <h3>User Workflow</h3>
+            <p><strong>Admin creating maps:</strong></p>
+            <ol>
+                <li>Go to Admin Panel → Map Generator</li>
+                <li>Upload floor plan image</li>
+                <li>Add table components by clicking on the image</li>
+                <li>Customize table properties (name, capacity)</li>
+                <li>Click "Save to Firebase" and enter a map name</li>
+            </ol>
+            
+            <p><strong>Anyone using maps:</strong></p>
+            <ol>
+                <li>Go to Admin Panel → Map Generator or Manage Tables</li>
+                <li>Select desired map from "Select Map" dropdown</li>
+                <li>Click "Load Map" button</li>
+                <li>Map loads with all components and interactivity</li>
+            </ol>
+        </div>
+
+        <div class="step">
+            <h3>Try It Out!</h3>
+            <p>Ready to test the Firebase integration?</p>
+            <ol>
+                <li>Make sure you've set up Firebase (see FIREBASE_SETUP.md)</li>
+                <li>Start your server: <code>python3 -m http.server 8000</code></li>
+                <li>Open <a href="index.html">index.html</a> in your browser</li>
+                <li>Create a test map and save it to Firebase</li>
+                <li>Refresh the page and try loading the map from the dropdown</li>
+            </ol>
+        </div>
+    </div>
+</body>
+</html>

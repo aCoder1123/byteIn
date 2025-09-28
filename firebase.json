@@ -19,6 +19,7 @@
     }
   ],
   "hosting": {
+    "site": "bytein-gt",
     "public": "public",
     "ignore": [
       "firebase.json",
@@ -33,6 +34,18 @@
     ]
   },
   "emulators": {
-    "singleProjectMode": true
+    "singleProjectMode": true,
+    "functions": {
+      "port": 5001
+    },
+    "firestore": {
+      "port": 8080
+    },
+    "hosting": {
+      "port": 5002
+    },
+    "ui": {
+      "enabled": true
+    }
   }
 }
