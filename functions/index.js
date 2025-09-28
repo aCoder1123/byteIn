@@ -20,8 +20,8 @@ setGlobalOptions({ maxInstances: 10 });
 
 exports.setStatus = onRequest(async (request, response) => {
 	let auth = request.body.auth;
-	let apiKey = await db.collection("settings").doc("apiKey").get();
-	if (!apiKey.data || !(apiKey.data().key == request.body.auth)) {
+	let apiKey = await db.collection("settings").doc("config").get();
+	if (!apiKey.data || !(apiKey.data().apiKey == request.body.auth)) {
 		response.status(401).send();
 		return;
 	} else if (!request.body.uid) {
