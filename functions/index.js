@@ -19,7 +19,6 @@ const db = admin.firestore();
 setGlobalOptions({ maxInstances: 10 });
 
 exports.setStatus = onRequest(async (request, response) => {
-	let auth = request.body.auth;
 	let apiKey = await db.collection("settings").doc("config").get();
 	if (!apiKey.data || !(apiKey.data().apiKey == request.body.auth)) {
 		response.status(401).send();
@@ -28,47 +27,45 @@ exports.setStatus = onRequest(async (request, response) => {
 		response.status(400).send();
 		return;
 	}
-	let tables = db.collection("tableData");
-	let userCheckedIn = await tables.where("uid", "==", request.body.uid).get();
-	let set = false;
-	if (!userCheckedIn.empty && request.body.uid != "-") {
-		userCheckedIn.forEach((doc) => {
-			let data = doc.data();
-			if (doc.id != request.body.table) {
-				data.checkedOut = false;
-				data.uid = "-";
-			} else {
-				set = true;
-				if (request.body.uid == "-") {
-					data.checkedOut = false;
-					data.uid = "-";
-				} else {
-					data.lastCheckout = Timestamp.now();
-				}
-			}
-			db.collection("tableData").doc(doc.id).set(data);
-		});
-	}
-	if (!set) {
-		let doc = await db.collection("tableData").doc(request.body.table).get();
-		if (!doc.exists) {
-			response.status(400).send("No table with the supplied id exists")
-			return
-		}
-		let data = doc.data();
-		if (request.body.uid != "-") {
-			data.lastCheckout = Timestamp.now();
-			data.checkedOut = true;
-			data.uid = request.body.uid;
-		} else {
-			data.checkedOut = false;
-			data.uid = "-";
-		}
-		db.collection("tableData").doc(doc.id).set(data);
-	}
 
 	let config = await db.collection("settings").doc("config").get();
 	let configData = config.data();
 	let waitTimeMinutes = configData.waitTime;
-	response.status(200).send({ checkedIn: request.body.uid != "-", delay: waitTimeMinutes });
+
+	let tableID = request.body.table
+	let uid = request.body.uid
+	let thisFloor = await db.collection("maps").doc(tableID[0]).get()
+	thisFloor = thisFloor.data()
+	for (let table of thisFloor.components) {
+		if (table.assignedTo == uid && uid != '-') {
+			if (table.id == tableID) {
+				response.status(200).send({ checkedIn: true, delay: waitTimeMinutes });
+				return
+			} else {
+				response.status(401).send({ checkedIn: false, delay: 0 });
+				return
+			}
+		}
+	} 
+	for (let table of thisFloor.components) {
+		if (table.id == tableID) {
+			if (uid == '-') {
+				table.assignedTo = null
+				table.occupied = false
+				db.collection("maps").doc(tableID[0]).set(thisFloor)
+				response.status(200).send({ checkedIn: false, delay: 0 });
+				return
+			}
+			else if (table.assignedTo != '-') {
+				response.status(401).send({ checkedIn: false, delay: -1 });
+				return;
+			} else {
+				table.assignedTo = uid;
+				table.occupied = true;
+				db.collection("maps").doc(tableID[0]).set(thisFloor);
+				response.status(200).send({ checkedIn: true, delay: waitTimeMinutes });
+				return;
+			}
+		}
+	}
 });
