@@ -385,17 +385,29 @@ body {
 }
 
 /* Upload & Tools (Left Sidebar) */
-.upload-section, .component-tools, .component-properties {
+.floor-settings, .upload-section, .component-tools, .component-properties {
     background-color: white;
     padding: 1rem;
     border-radius: 8px;
     box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
 
-.upload-section h3, .component-tools h3, .component-properties h3 {
+.floor-settings {
+    margin-bottom: 1rem;
+}
+
+.floor-settings h3, .upload-section h3, .component-tools h3, .component-properties h3 {
     color: #2c3e50;
     margin-bottom: 0.75rem;
     font-size: 1rem;
+}
+
+.form-hint {
+    display: block;
+    color: #7f8c8d;
+    font-size: 0.8rem;
+    margin-top: 0.25rem;
+    font-style: italic;
 }
 
 .upload-area {

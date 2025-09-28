@@ -24,10 +24,8 @@ class TableManager {
         this.currentUser = null;
         
         // Real-time listener properties
-        this.tableDataListener = null;
         this.mapsListener = null;
         this.mapComponentsListener = null; // For listening to current map's components
-        this.currentTableData = new Map(); // Store current table data for comparison
         this.currentMaps = new Map(); // Store current maps data for comparison
         this.currentMapComponents = new Map(); // Store current map components for comparison
         
@@ -169,6 +167,19 @@ class TableManager {
             this.saveMapToFirebase();
         });
 
+        // Test Firebase connection button (temporary for debugging)
+        if (document.getElementById('test-firebase-btn')) {
+            document.getElementById('test-firebase-btn').addEventListener('click', () => {
+                this.testFirebaseConnection();
+            });
+        }
+
+        // Floor number input
+        document.getElementById('floor-number-input').addEventListener('input', (e) => {
+            this.currentFloor = parseInt(e.target.value) || 1;
+            this.updateFloorDisplay();
+        });
+
         // Map selector functionality
         document.getElementById('load-selected-map-btn').addEventListener('click', () => {
             this.loadSelectedFirebaseMap();
@@ -235,7 +246,6 @@ class TableManager {
         this.isAdminMode = false;
         
         // Clean up table data listeners and set up maps real-time listener
-        this.cleanupTableDataListener();
         this.cleanupMapComponentsListener();
         this.setupMapsListener();
         this.loadMapsOverview();
@@ -251,7 +261,6 @@ class TableManager {
         this.isAdminMode = true;
         
         // Clean up all real-time listeners when switching to admin
-        this.cleanupTableDataListener();
         this.cleanupMapComponentsListener();
         this.cleanupMapsListener();
         
@@ -262,13 +271,60 @@ class TableManager {
     switchToMapGenerator() {
         this.isMapGeneratorMode = true;
         this.renderMapGenerator();
+        this.updateFloorDisplay();
+    }
+
+    updateFloorDisplay() {
+        const floorInput = document.getElementById('floor-number-input');
+        if (floorInput) {
+            floorInput.value = this.currentFloor;
+        }
+    }
+
+    async testFirebaseConnection() {
+        console.log('Testing Firebase connection...');
+        try {
+            if (!window.firebaseDB) {
+                console.error('Firebase DB not available');
+                this.showNotification('Firebase DB not available', 'error');
+                return;
+            }
+
+            console.log('Firebase DB:', window.firebaseDB);
+            console.log('Available Firebase functions:', {
+                firebaseCollection: typeof window.firebaseCollection,
+                firebaseSetDoc: typeof window.firebaseSetDoc,
+                firebaseDoc: typeof window.firebaseDoc,
+                firebaseGetDocs: typeof window.firebaseGetDocs
+            });
+
+            // Try to create a simple test document
+            const testData = { 
+                test: true, 
+                timestamp: new Date().toISOString(),
+                message: 'Firebase connection test'
+            };
+            
+            const testCollection = window.firebaseCollection(window.firebaseDB, 'test');
+            const testDocRef = window.firebaseDoc(testCollection, 'connection-test');
+            
+            console.log('Test collection:', testCollection);
+            console.log('Test doc ref:', testDocRef);
+            
+            await window.firebaseSetDoc(testDocRef, testData);
+            console.log('Test document saved successfully!');
+            
+            this.showNotification('Firebase connection test successful!', 'success');
+        } catch (error) {
+            console.error('Firebase connection test failed:', error);
+            this.showNotification('Firebase connection test failed: ' + error.message, 'error');
+        }
     }
 
     switchFloor(floorNumber) {
         this.currentFloor = floorNumber;
         
         // Clean up existing listeners before switching floors
-        this.cleanupTableDataListener();
         this.cleanupMapComponentsListener();
         
         // Update dashboard floor buttons
@@ -292,24 +348,19 @@ class TableManager {
 
 
     async renderDashboard() {
-        console.log('Rendering dashboard for floor:', this.currentFloor);
         const mapContainer = document.getElementById('table-map');
         mapContainer.innerHTML = '<div class="loading-placeholder">Loading map...</div>';
         
         try {
             // Get the map for this floor
             const mapData = await this.getMapForFloor(this.currentFloor);
-            console.log('Map data received:', mapData);
             
             if (mapData) {
-                console.log('Displaying dashboard map');
                 // Display the map with components
                 this.displayDashboardMap(mapData);
-                // Set up real-time listeners for both table data and map components
-                this.setupTableDataListener();
+                // Set up real-time listener for map components (occupancy changes)
                 this.setupMapComponentsListener();
             } else {
-                console.log('No map data, showing placeholder');
                 // No map found for this floor
                 mapContainer.innerHTML = `
                     <div class="no-map-placeholder">
@@ -377,8 +428,6 @@ class TableManager {
         const currentDisplayedWidth = img.offsetWidth;
         const currentDisplayedHeight = img.offsetHeight;
         
-        console.log("Current displayed size:", currentDisplayedWidth, currentDisplayedHeight);
-        console.log("Component positions (normalized):", components.map(c => ({x: c.x, y: c.y})));
 
         components
             .filter(component => component.type === 'table' || component.type === 'add')
@@ -401,8 +450,6 @@ class TableManager {
                 tableElement.style.width = `${scaledSize}px`;
                 tableElement.style.height = `${scaledSize}px`;
                 
-                tableElement.style.backgroundColor = component.occupied ? 'rgba(231, 76, 60, 0.8)' : 'rgba(52, 152, 219, 0.8)';
-                tableElement.style.border = `2px solid ${component.occupied ? '#c0392b' : '#2980b9'}`;
                 tableElement.style.borderRadius = '50%';
                 tableElement.style.display = 'flex';
                 tableElement.style.alignItems = 'center';
@@ -413,28 +460,9 @@ class TableManager {
                 tableElement.style.cursor = 'default';
                 tableElement.style.zIndex = '10';
                 tableElement.style.transform = 'translate(-50%, -50%)';
+                // Add smooth transition for status changes
+                tableElement.style.transition = 'background-color 0.3s ease, border-color 0.3s ease';
 
-
-                // Add occupied indicator with scaled size
-                if (component.occupied) {
-                    const occupiedIndicator = document.createElement('div');
-                    occupiedIndicator.style.position = 'absolute';
-                    occupiedIndicator.style.top = '-3px';
-                    occupiedIndicator.style.right = '-3px';
-                    occupiedIndicator.style.backgroundColor = '#c0392b';
-                    occupiedIndicator.style.color = 'white';
-                    occupiedIndicator.style.borderRadius = '50%';
-                    
-                    const indicatorSize = Math.max(10, scaledSize * 0.4);
-                    occupiedIndicator.style.width = `${indicatorSize}px`;
-                    occupiedIndicator.style.height = `${indicatorSize}px`;
-                    occupiedIndicator.style.display = 'flex';
-                    occupiedIndicator.style.alignItems = 'center';
-                    occupiedIndicator.style.justifyContent = 'center';
-                    occupiedIndicator.style.fontSize = `${Math.max(0.5, indicatorSize * 0.04)}rem`;
-                    occupiedIndicator.textContent = '✕';
-                    tableElement.appendChild(occupiedIndicator);
-                }
 
                 // Add table number and data attribute for easier selection
                 const tableNumber = document.createElement('div');
@@ -445,12 +473,9 @@ class TableManager {
                 const tableIdString = component.id.toString();
                 tableElement.setAttribute('data-table-id', tableIdString);
                 
-                console.log(`Created table element with ID: ${tableIdString}`, {
-                    element: tableElement,
-                    hasAttribute: tableElement.hasAttribute('data-table-id'),
-                    attributeValue: tableElement.getAttribute('data-table-id')
-                });
-
+                // Set initial visual state based on occupancy
+                this.updateTableElement(tableElement, component.occupied);
+                
                 // Add hover effect (view only)
                 tableElement.addEventListener('mouseenter', () => {
                     tableElement.style.transform = 'translate(-50%, -50%) scale(1.1)';
@@ -477,6 +502,8 @@ class TableManager {
         let backgroundColor = '#3498db'; // Default info
         if(type === 'success') backgroundColor = '#27ae60';
         if(type === 'error') backgroundColor = '#e74c3c';
+        if(type === 'warning') backgroundColor = '#f39c12';
+
 
         notification.style.cssText = `
             position: fixed;
@@ -1148,9 +1175,40 @@ class TableManager {
         console.log('saveMapToFirebase called');
         try {
             if (!window.firebaseDB) {
-                alert('Firebase not initialized. Please check your Firebase configuration.');
+                console.error('Firebase DB not available');
+                this.showNotification('Firebase not initialized. Please check your Firebase configuration.', 'error');
                 return;
             }
+
+            console.log('Firebase DB available:', window.firebaseDB);
+            console.log('User authenticated:', this.isAuthenticated);
+            console.log('Current user:', this.currentUser);
+
+            // Get floor number from input field
+            const floorInput = document.getElementById('floor-number-input');
+            const floorNumber = parseInt(floorInput.value);
+            
+            console.log('Floor number from input:', floorNumber);
+            
+            // Validate floor number
+            if (!floorNumber || floorNumber < 1 || floorNumber > 99) {
+                console.error('Invalid floor number:', floorNumber);
+                this.showNotification('Please enter a valid floor number (1-99)', 'error');
+                floorInput.focus();
+                return;
+            }
+
+            // Validate that we have components to save
+            if (!this.mapComponents || this.mapComponents.length === 0) {
+                console.error('No components to save:', this.mapComponents);
+                this.showNotification('Please add at least one table component before saving', 'error');
+                return;
+            }
+
+            console.log('Components to save:', this.mapComponents);
+
+            // Update current floor to match input
+            this.currentFloor = floorNumber;
 
             const mapData = {
                 name: `Floor ${this.currentFloor} Map`,
@@ -1160,15 +1218,41 @@ class TableManager {
                 updatedAt: new Date().toISOString()
             };
 
+            console.log('Map data to save:', mapData);
+
             const mapsCollection = window.firebaseCollection(window.firebaseDB, 'maps');
-            const docRef = window.firebaseDoc(mapsCollection, this.currentFloor.toString());
-            await window.firebaseSetDoc(docRef, mapData);
+            console.log('Maps collection:', mapsCollection);
             
-            this.showNotification('Map saved to Firebase successfully!', 'success');
+            const docRef = window.firebaseDoc(mapsCollection, this.currentFloor.toString());
+            console.log('Document reference:', docRef);
+            
+            console.log('Attempting to save to Firebase...');
+            
+            // Try to save with a test document first
+            try {
+                const testData = { test: true, timestamp: new Date().toISOString() };
+                const testDocRef = window.firebaseDoc(window.firebaseDB, 'test', 'test');
+                await window.firebaseSetDoc(testDocRef, testData);
+                console.log('Test document saved successfully');
+                
+                // Now save the actual map data
+                await window.firebaseSetDoc(docRef, mapData);
+                console.log('Successfully saved to Firebase');
+            } catch (saveError) {
+                console.error('Save error:', saveError);
+                throw saveError;
+            }
+            
+            this.showNotification(`Floor ${this.currentFloor} map saved successfully!`, 'success');
             this.loadFirebaseMaps(); // Refresh the map list
         } catch (error) {
             console.error('Error saving map to Firebase:', error);
-            alert('Error saving map to Firebase: ' + error.message);
+            console.error('Error details:', {
+                message: error.message,
+                code: error.code,
+                stack: error.stack
+            });
+            this.showNotification('Error saving map to Firebase: ' + error.message, 'error');
         }
     }
 
@@ -1208,6 +1292,9 @@ class TableManager {
                 this.mapComponents = mapData.components || [];
                 this.componentCounter = this.mapComponents.length + 1;
                 this.currentFloor = parseInt(selectedMapId);
+                
+                // Update the floor number input to match the loaded map
+                this.updateFloorDisplay();
                 
                 // Display the map (components will be rendered after image loads)
                 this.displayMapImage(false);
@@ -1439,42 +1526,6 @@ class TableManager {
         }
     }
 
-    // Real-time Table Data Methods
-    setupTableDataListener() {
-        // Clean up existing listener
-        this.cleanupTableDataListener();
-        
-        if (!window.firebaseDB || !window.firebaseOnSnapshot) {
-            console.log('Firebase not available for real-time updates');
-            return;
-        }
-
-        console.log('Setting up real-time table data listener for floor:', this.currentFloor);
-        
-        try {
-            const tableDataCollection = window.firebaseCollection(window.firebaseDB, 'tableData');
-            
-            // Set up listener for all table data
-            this.tableDataListener = window.firebaseOnSnapshot(tableDataCollection, (snapshot) => {
-                console.log('Table data changed, updating dashboard');
-                this.handleTableDataChange(snapshot);
-            }, (error) => {
-                console.error('Error in table data listener:', error);
-            });
-            
-        } catch (error) {
-            console.error('Error setting up table data listener:', error);
-        }
-    }
-
-    cleanupTableDataListener() {
-        if (this.tableDataListener) {
-            console.log('Cleaning up table data listener');
-            this.tableDataListener();
-            this.tableDataListener = null;
-        }
-    }
-
     // Maps Real-time Listener Methods
     setupMapsListener() {
         if (!window.firebaseDB || !window.firebaseOnSnapshot) {
@@ -1485,8 +1536,6 @@ class TableManager {
         // Clean up existing listener
         this.cleanupMapsListener();
 
-        console.log('Setting up maps real-time listener');
-        
         try {
             const mapsCollection = window.firebaseCollection(window.firebaseDB, 'maps');
             
@@ -1496,8 +1545,6 @@ class TableManager {
                 console.error('Maps listener error:', error);
                 this.showNotification('Error listening to maps updates', 'error');
             });
-
-            console.log('Maps real-time listener established');
             
         } catch (error) {
             console.error('Error setting up maps listener:', error);
@@ -1506,8 +1553,6 @@ class TableManager {
     }
 
     handleMapsChange(snapshot) {
-        console.log('Maps collection changed:', snapshot);
-        
         const changes = snapshot.docChanges();
         let hasChanges = false;
         
@@ -1517,21 +1562,18 @@ class TableManager {
             
             switch (change.type) {
                 case 'added':
-                    console.log(`Map added: ${mapId}`);
                     this.currentMaps.set(mapId, { ...mapData, id: mapId });
                     hasChanges = true;
                     this.showMapsNotification(`New map added: ${mapData.name || `Floor ${parseInt(mapId)}`}`, 'success');
                     break;
                     
                 case 'modified':
-                    console.log(`Map modified: ${mapId}`);
                     this.currentMaps.set(mapId, { ...mapData, id: mapId });
                     hasChanges = true;
                     this.showMapsNotification(`Map updated: ${mapData.name || `Floor ${parseInt(mapId)}`}`, 'info');
                     break;
                     
                 case 'removed':
-                    console.log(`Map removed: ${mapId}`);
                     this.currentMaps.delete(mapId);
                     hasChanges = true;
                     this.showMapsNotification(`Map deleted: ${mapId}`, 'warning');
@@ -1575,8 +1617,6 @@ class TableManager {
             const mapCard = this.createMapCard(map);
             mapsGrid.appendChild(mapCard);
         });
-        
-        console.log(`Updated maps overview with ${maps.length} maps`);
     }
 
     showMapsNotification(message, type) {
@@ -1588,7 +1628,6 @@ class TableManager {
 
     cleanupMapsListener() {
         if (this.mapsListener) {
-            console.log('Cleaning up maps listener');
             this.mapsListener();
             this.mapsListener = null;
         }
@@ -1605,8 +1644,6 @@ class TableManager {
         // Clean up existing listener
         this.cleanupMapComponentsListener();
 
-        console.log('Setting up map components real-time listener for floor:', this.currentFloor);
-        
         try {
             // Listen to the specific map document for this floor
             const mapDoc = window.firebaseDoc(window.firebaseDB, 'maps', this.currentFloor.toString());
@@ -1617,8 +1654,6 @@ class TableManager {
                 console.error('Map components listener error:', error);
                 this.showNotification('Error listening to map component updates', 'error');
             });
-
-            console.log('Map components real-time listener established for floor:', this.currentFloor);
             
         } catch (error) {
             console.error('Error setting up map components listener:', error);
@@ -1627,10 +1662,7 @@ class TableManager {
     }
 
     handleMapComponentsChange(docSnapshot) {
-        console.log('Map components changed for floor:', this.currentFloor);
-        
         if (!docSnapshot.exists()) {
-            console.log('Map document does not exist');
             return;
         }
 
@@ -1640,261 +1672,88 @@ class TableManager {
         // Check for occupancy changes in table components
         const tableComponents = newComponents.filter(comp => comp.type === 'table');
         
-        tableComponents.forEach(component => {
-            const componentId = component.id.toString();
+        tableComponents.forEach(newComponent => {
+            const componentId = newComponent.id.toString();
             const currentComponent = this.currentMapComponents.get(componentId);
             
-            console.log(`Processing component ${componentId}:`, {
-                currentOccupied: currentComponent?.occupied,
-                newOccupied: component.occupied,
-                hasChanged: currentComponent && currentComponent.occupied !== component.occupied
-            });
-            
             // Check if occupancy status changed
-            if (currentComponent && currentComponent.occupied !== component.occupied) {
-                console.log(`Table ${componentId} occupancy changed from ${currentComponent.occupied} to ${component.occupied}`);
-                
+            if (currentComponent && currentComponent.occupied !== newComponent.occupied) {
                 // Update the dashboard UI for this table
-                this.updateDashboardTableOccupancy(componentId, component.occupied);
+                this.updateDashboardTableOccupancy(componentId, newComponent.occupied);
                 
                 // Show notification
-                const status = component.occupied ? 'occupied' : 'available';
-                this.showNotification(`Table ${componentId} is now ${status}`, component.occupied ? 'warning' : 'success');
+                const status = newComponent.occupied ? 'occupied' : 'available';
+                this.showNotification(`Table ${componentId} is now ${status}`, newComponent.occupied ? 'warning' : 'success');
             }
             
-            // Update the stored component data
-            this.currentMapComponents.set(componentId, component);
-        });
-        
-        // Handle removed components (though this is less common)
-        const currentComponentIds = new Set(tableComponents.map(comp => comp.id.toString()));
-        this.currentMapComponents.forEach((component, componentId) => {
-            if (!currentComponentIds.has(componentId)) {
-                console.log(`Table component ${componentId} was removed`);
-                this.currentMapComponents.delete(componentId);
-            }
+            // Update the stored component data with the latest version
+            this.currentMapComponents.set(componentId, newComponent);
         });
     }
 
     updateDashboardTableOccupancy(tableId, isOccupied) {
-        // Find the table element in the dashboard using data attribute
+        // Find the table element in the dashboard using its data attribute
         const mapContainer = document.getElementById('table-map');
-        
         if (!mapContainer) {
-            console.error('Map container not found');
+            console.error('Dashboard map container not found.');
             return;
         }
         
-        console.log(`Looking for table with ID: ${tableId} (type: ${typeof tableId})`);
-        
-        // Try multiple selection methods for debugging
         const targetTable = mapContainer.querySelector(`[data-table-id="${tableId}"]`);
-        const allTables = mapContainer.querySelectorAll('.dashboard-table-component');
         
-        console.log(`Found ${allTables.length} table elements total`);
-        console.log('All table elements:', Array.from(allTables).map(el => ({
-            dataId: el.getAttribute('data-table-id'),
-            dataIdType: typeof el.getAttribute('data-table-id'),
-            textContent: el.children[0]?.textContent,
-            hasAttribute: el.hasAttribute('data-table-id')
-        })));
-        
-        if (!targetTable) {
-            console.log(`Table element not found for table ID: ${tableId}`);
-            // Try alternative selection methods
-            let foundTable = null;
-            allTables.forEach((el) => {
-                const dataId = el.getAttribute('data-table-id');
-                const textContent = el.children[0]?.textContent;
-                console.log(`Checking element - dataId: "${dataId}", textContent: "${textContent}", matches: ${dataId === tableId.toString()}`);
-                if (dataId === tableId.toString() || textContent === tableId.toString()) {
-                    foundTable = el;
-                }
-            });
-            
-            if (foundTable) {
-                console.log('Found table using alternative method');
-                return this.updateTableElement(foundTable, isOccupied);
-            }
-            
-            return;
+        if (targetTable) {
+            this.updateTableElement(targetTable, isOccupied);
         }
-        
-        this.updateTableElement(targetTable, isOccupied);
     }
 
     updateTableElement(tableElement, isOccupied) {
-        const tableId = tableElement.getAttribute('data-table-id') || tableElement.children[0]?.textContent;
-        console.log(`Updating dashboard UI for table ${tableId}: ${isOccupied ? 'occupied' : 'available'}`);
-        
         // Update the table appearance based on occupancy
         if (isOccupied) {
-            tableElement.style.backgroundColor = 'rgba(231, 76, 60, 0.8)';
-            tableElement.style.borderColor = '#c0392b';
+            tableElement.style.backgroundColor = 'rgba(231, 76, 60, 0.8)'; // Red for occupied
+            tableElement.style.border = `2px solid #c0392b`;
         } else {
-            tableElement.style.backgroundColor = 'rgba(52, 152, 219, 0.8)';
-            tableElement.style.borderColor = '#2980b9';
+            tableElement.style.backgroundColor = 'rgba(52, 152, 219, 0.8)'; // Blue for available
+            tableElement.style.border = `2px solid #2980b9`;
         }
         
-        // Update occupied indicator
+        // Add or remove the occupied "X" indicator
         const existingIndicator = tableElement.querySelector('.occupied-indicator');
-        if (existingIndicator) {
-            existingIndicator.remove();
-        }
-        
-        if (isOccupied) {
+        if (isOccupied && !existingIndicator) {
             const occupiedIndicator = document.createElement('div');
             occupiedIndicator.className = 'occupied-indicator';
-            occupiedIndicator.style.position = 'absolute';
-            occupiedIndicator.style.top = '-3px';
-            occupiedIndicator.style.right = '-3px';
-            occupiedIndicator.style.backgroundColor = '#c0392b';
-            occupiedIndicator.style.color = 'white';
-            occupiedIndicator.style.borderRadius = '50%';
-            occupiedIndicator.style.width = '20px';
-            occupiedIndicator.style.height = '20px';
-            occupiedIndicator.style.display = 'flex';
-            occupiedIndicator.style.alignItems = 'center';
-            occupiedIndicator.style.justifyContent = 'center';
-            occupiedIndicator.style.fontSize = '0.8rem';
+            
+            // Re-calculate scaled size for the indicator
+            const scaledSize = tableElement.offsetWidth;
+            const indicatorSize = Math.max(10, scaledSize * 0.4);
+
+            occupiedIndicator.style.cssText = `
+                position: absolute;
+                top: -3px;
+                right: -3px;
+                background-color: #c0392b;
+                color: white;
+                border-radius: 50%;
+                width: ${indicatorSize}px;
+                height: ${indicatorSize}px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: ${Math.max(0.5, indicatorSize * 0.04)}rem;
+            `;
             occupiedIndicator.textContent = '✕';
             tableElement.appendChild(occupiedIndicator);
+        } else if (!isOccupied && existingIndicator) {
+            existingIndicator.remove();
         }
-        
-        // Add smooth transition effect
-        tableElement.style.transition = 'all 0.3s ease';
     }
+
 
     cleanupMapComponentsListener() {
         if (this.mapComponentsListener) {
-            console.log('Cleaning up map components listener');
             this.mapComponentsListener();
             this.mapComponentsListener = null;
         }
         this.currentMapComponents.clear();
-    }
-
-    handleTableDataChange(snapshot) {
-        // Only update if we're on the dashboard
-        if (this.isAdminMode) {
-            return;
-        }
-
-        const mapContainer = document.getElementById('table-map');
-        if (!mapContainer || !mapContainer.querySelector('img')) {
-            // Dashboard not currently displayed
-            return;
-        }
-
-        console.log('Processing table data changes...');
-        
-        // Process each document change
-        snapshot.docChanges().forEach((change) => {
-            const docData = change.doc.data();
-            const tableId = change.doc.id;
-            
-            console.log(`Table ${tableId} changed:`, docData);
-            
-            // Update our local cache
-            if (change.type === 'removed') {
-                this.currentTableData.delete(tableId);
-            } else {
-                this.currentTableData.set(tableId, docData);
-            }
-            
-            // Update the UI for this specific table
-            this.updateTableStatusInUI(tableId, docData);
-        });
-    }
-
-    updateTableStatusInUI(tableId, tableData) {
-        // Find the table component in the current map using data attribute
-        const mapContainer = document.getElementById('table-map');
-        const targetTable = mapContainer.querySelector(`[data-table-id="${tableId}"]`);
-        
-        if (!targetTable) {
-            console.log(`Table element not found for table ID: ${tableId}`);
-            return;
-        }
-        
-        console.log(`Updating UI for table ${tableId}:`, tableData);
-        
-        // Update the table appearance based on occupancy
-        const isOccupied = tableData.checkedOut && tableData.uid && tableData.uid !== '-';
-        
-        // Update background color
-        if (isOccupied) {
-            targetTable.style.backgroundColor = 'rgba(231, 76, 60, 0.8)';
-            targetTable.style.borderColor = '#c0392b';
-        } else {
-            targetTable.style.backgroundColor = 'rgba(52, 152, 219, 0.8)';
-            targetTable.style.borderColor = '#2980b9';
-        }
-        
-        // Update occupied indicator
-        const existingIndicator = targetTable.querySelector('.occupied-indicator');
-        if (existingIndicator) {
-            existingIndicator.remove();
-        }
-        
-        if (isOccupied) {
-            const occupiedIndicator = document.createElement('div');
-            occupiedIndicator.className = 'occupied-indicator';
-            occupiedIndicator.style.position = 'absolute';
-            occupiedIndicator.style.top = '-3px';
-            occupiedIndicator.style.right = '-3px';
-            occupiedIndicator.style.backgroundColor = '#c0392b';
-            occupiedIndicator.style.color = 'white';
-            occupiedIndicator.style.borderRadius = '50%';
-            occupiedIndicator.style.width = '20px';
-            occupiedIndicator.style.height = '20px';
-            occupiedIndicator.style.display = 'flex';
-            occupiedIndicator.style.alignItems = 'center';
-            occupiedIndicator.style.justifyContent = 'center';
-            occupiedIndicator.style.fontSize = '0.8rem';
-            occupiedIndicator.textContent = '✕';
-            targetTable.appendChild(occupiedIndicator);
-        }
-        
-        // Add smooth transition effect
-        targetTable.style.transition = 'all 0.3s ease';
-        
-        // Show a brief notification for the change
-        this.showTableStatusNotification(tableId, isOccupied);
-    }
-
-    showTableStatusNotification(tableId, isOccupied) {
-        const status = isOccupied ? 'occupied' : 'available';
-        const message = `Table ${tableId} is now ${status}`;
-        
-        // Create a subtle notification
-        const notification = document.createElement('div');
-        notification.style.cssText = `
-            position: fixed;
-            top: 80px;
-            right: 20px;
-            background-color: ${isOccupied ? '#e74c3c' : '#27ae60'};
-            color: white;
-            padding: 0.5rem 1rem;
-            border-radius: 4px;
-            font-size: 0.9rem;
-            z-index: 9999;
-            animation: slideIn 0.3s ease;
-            max-width: 200px;
-        `;
-        notification.textContent = message;
-        
-        document.body.appendChild(notification);
-        
-        // Remove notification after 2 seconds
-        setTimeout(() => {
-            notification.style.animation = 'slideOut 0.3s ease forwards';
-            setTimeout(() => {
-                if (notification.parentNode) {
-                    notification.parentNode.removeChild(notification);
-                }
-            }, 300);
-        }, 2000);
     }
 
     // Maps Overview Methods
