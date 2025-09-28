@@ -107,14 +107,12 @@
             <p>Maps are stored in Firebase with this structure:</p>
             <div class="code-block">
 {
-  name: "Restaurant Floor 1",
-  floor: 1,
+  name: "Floor 1 Map",
   image: "data:image/jpeg;base64...", // Base64 encoded image
   components: [
     {
-      id: "table-1",
+      id: 1,
       type: "table", 
-      name: "Table 1",
       x: 100,
       y: 150,
       occupied: false
@@ -123,6 +121,8 @@
   createdAt: "2024-01-15T10:30:00.000Z",
   updatedAt: "2024-01-15T10:30:00.000Z"
 }
+
+// Document ID: "1" (represents Floor 1)
             </div>
         </div>
 

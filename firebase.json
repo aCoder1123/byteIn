@@ -19,6 +19,7 @@
     }
   ],
   "hosting": {
+    "site": "bytein-gt",
     "public": "public",
     "ignore": [
       "firebase.json",

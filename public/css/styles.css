@@ -1024,3 +1024,262 @@ body {
         margin-bottom: 0;
     }
 }
+
+/* Maps Overview Styles */
+.maps-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 1rem;
+}
+
+.maps-header {
+    background-color: white;
+    padding: 2rem;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    margin-bottom: 2rem;
+    text-align: center;
+}
+
+.maps-header h2 {
+    color: #2c3e50;
+    margin-bottom: 0.5rem;
+    font-size: 2rem;
+}
+
+.maps-header p {
+    color: #7f8c8d;
+    margin-bottom: 1.5rem;
+    font-size: 1.1rem;
+}
+
+.maps-controls {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.create-btn {
+    background-color: #27ae60;
+    color: white;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 500;
+    transition: background-color 0.3s ease;
+}
+
+.create-btn:hover {
+    background-color: #229954;
+}
+
+.maps-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+    gap: 2rem;
+    padding: 1rem 0;
+}
+
+.map-card {
+    background-color: white;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    overflow: hidden;
+    transition: all 0.3s ease;
+    position: relative;
+}
+
+.map-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+}
+
+.map-card-header {
+    padding: 1.5rem;
+    background: linear-gradient(135deg, #3498db, #2980b9);
+    color: white;
+    position: relative;
+}
+
+.map-card-title {
+    font-size: 1.3rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.map-card-floor {
+    font-size: 1rem;
+    opacity: 0.9;
+    margin-bottom: 0.5rem;
+}
+
+.map-card-id {
+    font-size: 0.9rem;
+    opacity: 0.8;
+    font-family: 'Courier New', monospace;
+    background-color: rgba(255,255,255,0.2);
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    display: inline-block;
+}
+
+.map-card-body {
+    padding: 1.5rem;
+}
+
+.map-preview {
+    width: 100%;
+    height: 200px;
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.map-preview img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    border-radius: 6px;
+}
+
+.map-preview-placeholder {
+    color: #7f8c8d;
+    font-size: 0.9rem;
+    text-align: center;
+}
+
+.map-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.map-stat {
+    text-align: center;
+    padding: 0.75rem;
+    background-color: #f8f9fa;
+    border-radius: 6px;
+}
+
+.map-stat-value {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #2c3e50;
+    display: block;
+}
+
+.map-stat-label {
+    font-size: 0.8rem;
+    color: #7f8c8d;
+    margin-top: 0.25rem;
+}
+
+.map-actions {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.map-action-btn {
+    flex: 1;
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    min-width: 80px;
+}
+
+.map-action-btn.primary {
+    background-color: #3498db;
+    color: white;
+}
+
+.map-action-btn.primary:hover {
+    background-color: #2980b9;
+}
+
+.map-action-btn.secondary {
+    background-color: #95a5a6;
+    color: white;
+}
+
+.map-action-btn.secondary:hover {
+    background-color: #7f8c8d;
+}
+
+.map-action-btn.danger {
+    background-color: #e74c3c;
+    color: white;
+}
+
+.map-action-btn.danger:hover {
+    background-color: #c0392b;
+}
+
+.map-card-footer {
+    padding: 1rem 1.5rem;
+    background-color: #f8f9fa;
+    border-top: 1px solid #e9ecef;
+    font-size: 0.8rem;
+    color: #6c757d;
+}
+
+.map-timestamp {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.map-status {
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.map-status.active {
+    background-color: #d4edda;
+    color: #155724;
+}
+
+.map-status.inactive {
+    background-color: #f8d7da;
+    color: #721c24;
+}
+
+/* Responsive design for maps overview */
+@media (max-width: 768px) {
+    .maps-grid {
+        grid-template-columns: 1fr;
+        gap: 1.5rem;
+    }
+    
+    .maps-header {
+        padding: 1.5rem;
+    }
+    
+    .maps-controls {
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    .map-actions {
+        flex-direction: column;
+    }
+    
+    .map-stats {
+        grid-template-columns: 1fr;
+    }
+}

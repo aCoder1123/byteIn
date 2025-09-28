@@ -76,14 +76,12 @@ service cloud.firestore {
 Maps are stored in Firestore with this structure:
 ```javascript
 {
-  name: "Restaurant Floor 1",
-  floor: 1,
+  name: "Floor 1 Map",
   image: "data:image/jpeg;base64...", // Base64 encoded image
   components: [
     {
-      id: "table-1",
+      id: 1,
       type: "table",
-      name: "Table 1",
       x: 100,
       y: 150,
       occupied: false
@@ -94,6 +92,8 @@ Maps are stored in Firestore with this structure:
   updatedAt: "2024-01-15T10:30:00.000Z"
 }
 ```
+
+**Note:** The floor number is derived from the document ID (e.g., document ID "1" represents Floor 1). The `floor` field is no longer stored in the document data.
 
 ## Troubleshooting
 

@@ -16,28 +16,16 @@ const assignNFC = async (table, apiKey, ssid, networkPwd) => {
 			apiKey: apiKey,
 			ssid: ssid,
 			networkPwd: networkPwd,
-			timestamp: new Date().toISOString(),
-			version: '1.0'
 		};
 
 		// Convert to JSON string
 		const dataString = JSON.stringify(nfcData);
-		
-		// Create NDEF payload
-		const payload = {
-			records: [
-				{ 
-					recordType: "text", 
-					data: dataString,
-					mediaType: "application/json"
-				}
-			]
-		};
 
 		const ndef = new NDEFReader();
 		
 		// Write to NFC tag
-		await ndef.write(payload);
+		await ndef.write({records: [{recordType: "text", data: dataString}]});
+
 		
 		return {
 			success: true,

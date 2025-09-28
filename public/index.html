@@ -4,14 +4,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Table Management System</title>
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <link rel="icon" type="image/x-icon" href="/images/favicon.ico">
+    <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico">
+    <link rel="apple-touch-icon" href="/favicon.ico">
     <link rel="stylesheet" href="css/styles.css">
     
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-        import { getFirestore, collection, addDoc, getDocs, doc, updateDoc, deleteDoc } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+        import { getFirestore, collection, addDoc, getDocs, doc, updateDoc, deleteDoc, setDoc, getDoc, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
         import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-        import { firebaseConfig } from './firebase-config.js';
+        import { firebaseConfig } from './scripts/config.js';
         
         try {
             // Initialize Firebase
@@ -28,14 +32,16 @@
             window.firebaseDoc = doc;
             window.firebaseUpdateDoc = updateDoc;
             window.firebaseDeleteDoc = deleteDoc;
+            window.firebaseSetDoc = setDoc;
+            window.firebaseGetDoc = getDoc;
             window.firebaseOnAuthStateChanged = onAuthStateChanged;
             window.firebaseSignOut = signOut;
+            window.firebaseOnSnapshot = onSnapshot;
             
-            console.log('Firebase initialized successfully');
-        } catch (error)
- {
+            // Mark Firebase as initialized
+            window.firebaseInitialized = true;
+        } catch (error) {
             console.error('Firebase initialization error:', error);
-            console.log('Please check your firebase-config.js file and update the configuration');
         }
     </script>
 </head>
@@ -47,6 +53,7 @@
                 <h1 class="nav-title">Byte-In</h1>
                 <div class="nav-controls">
                     <button id="dashboard-btn" class="nav-btn active">Dashboard</button>
+                    <button id="maps-btn" class="nav-btn">Maps Overview</button>
                     <button id="admin-btn" class="nav-btn admin-only" style="display: none;">Map Generator</button>
                     <button id="login-btn" class="nav-btn login-btn">Login</button>
                     <button id="logout-btn" class="nav-btn logout-btn" style="display: none;">Logout</button>
@@ -71,6 +78,24 @@
                     <div id="table-map" class="table-map">
                         <!-- Maps will be displayed here -->
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Maps Overview Screen -->
+        <div id="maps-screen" class="screen">
+            <div class="maps-container">
+                <div class="maps-header">
+                    <h2>Maps Overview</h2>
+                    <p>View and manage all your floor maps</p>
+                    <div class="maps-controls">
+                        <button id="refresh-maps-overview-btn" class="action-btn refresh-btn">Refresh</button>
+                        <button id="create-new-map-btn" class="action-btn create-btn">Create New Map</button>
+                    </div>
+                </div>
+                
+                <div class="maps-grid" id="maps-grid">
+                    <div class="loading-placeholder">Loading maps...</div>
                 </div>
             </div>
         </div>
@@ -126,12 +151,8 @@
                                 <h3>Component Properties</h3>
                                 <div class="property-form">
                                     <div class="form-group">
-                                        <label for="component-name">Name/Number:</label>
-                                        <input type="text" id="component-name" placeholder="Table 1, Zone A, etc.">
-                                    </div>
-                                    <div class="form-group">
-                                        <label for="component-capacity">Capacity:</label>
-                                        <input type="number" id="component-capacity" min="1" placeholder="2">
+                                        <label for="component-number">Table Number:</label>
+                                        <input type="number" id="component-number" min="1" placeholder="1">
                                     </div>
                                     <div class="form-actions">
                                         <button id="save-component-btn" class="action-btn save-btn">Save Component</button>

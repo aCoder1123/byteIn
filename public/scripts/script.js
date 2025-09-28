@@ -23,6 +23,14 @@ class TableManager {
         this.isAuthenticated = false;
         this.currentUser = null;
         
+        // Real-time listener properties
+        this.tableDataListener = null;
+        this.mapsListener = null;
+        this.mapComponentsListener = null; // For listening to current map's components
+        this.currentTableData = new Map(); // Store current table data for comparison
+        this.currentMaps = new Map(); // Store current maps data for comparison
+        this.currentMapComponents = new Map(); // Store current map components for comparison
+        
         this.init();
         this.loadFirebaseMaps();
         this.initAuth();
@@ -38,8 +46,7 @@ class TableManager {
             const isOccupied = Math.random() < 0.3; // 30% chance of being occupied
             
             tables.push({
-                id: `${floorNumber}-${i}`,
-                number: i,
+                id: i,
                 floor: floorNumber,
                 occupied: isOccupied,
                 assignedTo: isOccupied ? `Guest ${Math.floor(Math.random() * 100) + 1}` : null
@@ -60,6 +67,10 @@ class TableManager {
             this.switchToDashboard();
         });
 
+        document.getElementById('maps-btn').addEventListener('click', () => {
+            this.switchToMapsOverview();
+        });
+
         document.getElementById('admin-btn').addEventListener('click', () => {
             if (this.isAuthenticated) {
                 this.switchToAdmin();
@@ -70,7 +81,7 @@ class TableManager {
 
         // Authentication buttons
         document.getElementById('login-btn').addEventListener('click', () => {
-            window.location.href = './public/signIn.html';
+            window.location.href = './signIn.html';
         });
 
         document.getElementById('logout-btn').addEventListener('click', () => {
@@ -167,6 +178,21 @@ class TableManager {
             this.loadFirebaseMaps();
         });
 
+        // Maps overview controls
+        document.getElementById('refresh-maps-overview-btn').addEventListener('click', () => {
+            // Clear current maps data and reload
+            this.currentMaps.clear();
+            this.loadMapsOverview();
+        });
+
+        document.getElementById('create-new-map-btn').addEventListener('click', () => {
+            if (this.isAuthenticated) {
+                this.switchToAdmin();
+            } else {
+                this.showNotification('Please log in to create new maps', 'error');
+            }
+        });
+
         document.getElementById('map-select').addEventListener('change', (e) => {
             const loadBtn = document.getElementById('load-selected-map-btn');
             loadBtn.disabled = !e.target.value;
@@ -187,18 +213,48 @@ class TableManager {
 
     switchToDashboard() {
         document.getElementById('dashboard-screen').classList.add('active');
+        document.getElementById('maps-screen').classList.remove('active');
         document.getElementById('admin-screen').classList.remove('active');
         document.getElementById('dashboard-btn').classList.add('active');
+        document.getElementById('maps-btn').classList.remove('active');
         document.getElementById('admin-btn').classList.remove('active');
         this.isAdminMode = false;
+        
+        // Clean up maps listener and set up table data listeners
+        this.cleanupMapsListener();
+        this.renderDashboard();
+    }
+
+    switchToMapsOverview() {
+        document.getElementById('dashboard-screen').classList.remove('active');
+        document.getElementById('maps-screen').classList.add('active');
+        document.getElementById('admin-screen').classList.remove('active');
+        document.getElementById('dashboard-btn').classList.remove('active');
+        document.getElementById('maps-btn').classList.add('active');
+        document.getElementById('admin-btn').classList.remove('active');
+        this.isAdminMode = false;
+        
+        // Clean up table data listeners and set up maps real-time listener
+        this.cleanupTableDataListener();
+        this.cleanupMapComponentsListener();
+        this.setupMapsListener();
+        this.loadMapsOverview();
     }
 
     switchToAdmin() {
         document.getElementById('dashboard-screen').classList.remove('active');
+        document.getElementById('maps-screen').classList.remove('active');
         document.getElementById('admin-screen').classList.add('active');
         document.getElementById('dashboard-btn').classList.remove('active');
+        document.getElementById('maps-btn').classList.remove('active');
         document.getElementById('admin-btn').classList.add('active');
         this.isAdminMode = true;
+        
+        // Clean up all real-time listeners when switching to admin
+        this.cleanupTableDataListener();
+        this.cleanupMapComponentsListener();
+        this.cleanupMapsListener();
+        
         this.switchToMapGenerator();
     }
 
@@ -210,6 +266,10 @@ class TableManager {
 
     switchFloor(floorNumber) {
         this.currentFloor = floorNumber;
+        
+        // Clean up existing listeners before switching floors
+        this.cleanupTableDataListener();
+        this.cleanupMapComponentsListener();
         
         // Update dashboard floor buttons
         document.querySelectorAll('.floor-btn').forEach(btn => {
@@ -232,17 +292,24 @@ class TableManager {
 
 
     async renderDashboard() {
+        console.log('Rendering dashboard for floor:', this.currentFloor);
         const mapContainer = document.getElementById('table-map');
         mapContainer.innerHTML = '<div class="loading-placeholder">Loading map...</div>';
         
         try {
-            // Get the most recent map for this floor
-            const mapData = await this.getMostRecentMapForFloor(this.currentFloor);
+            // Get the map for this floor
+            const mapData = await this.getMapForFloor(this.currentFloor);
+            console.log('Map data received:', mapData);
             
             if (mapData) {
+                console.log('Displaying dashboard map');
                 // Display the map with components
                 this.displayDashboardMap(mapData);
+                // Set up real-time listeners for both table data and map components
+                this.setupTableDataListener();
+                this.setupMapComponentsListener();
             } else {
+                console.log('No map data, showing placeholder');
                 // No map found for this floor
                 mapContainer.innerHTML = `
                     <div class="no-map-placeholder">
@@ -299,6 +366,12 @@ class TableManager {
 
     renderDashboardComponents(container, components, img, mapData) {
         if (!components || components.length === 0) return;
+
+        // Initialize current map components for real-time tracking
+        this.currentMapComponents.clear();
+        components.forEach(component => {
+            this.currentMapComponents.set(component.id.toString(), component);
+        });
 
         // Get the actual displayed dimensions of the image on screen (after responsive sizing)
         const currentDisplayedWidth = img.offsetWidth;
@@ -363,10 +436,20 @@ class TableManager {
                     tableElement.appendChild(occupiedIndicator);
                 }
 
-                // Add table number
+                // Add table number and data attribute for easier selection
                 const tableNumber = document.createElement('div');
-                tableNumber.textContent = component.name.replace(/[^\d]/g, '') || '?';
+                tableNumber.textContent = component.id || '?';
                 tableElement.appendChild(tableNumber);
+                
+                // Add data attribute for easier table selection
+                const tableIdString = component.id.toString();
+                tableElement.setAttribute('data-table-id', tableIdString);
+                
+                console.log(`Created table element with ID: ${tableIdString}`, {
+                    element: tableElement,
+                    hasAttribute: tableElement.hasAttribute('data-table-id'),
+                    attributeValue: tableElement.getAttribute('data-table-id')
+                });
 
                 // Add hover effect (view only)
                 tableElement.addEventListener('mouseenter', () => {
@@ -596,15 +679,13 @@ class TableManager {
 
     createComponent(x, y) {
         const componentType = 'table';
-        const componentName = `Table ${this.componentCounter}`;
+        const componentNumber = this.componentCounter;
 
         const component = {
-            id: `component-${this.componentCounter++}`,
             type: componentType,
-            name: componentName,
+            id: componentNumber,
             x: x,
             y: y,
-            capacity: 2,
             occupied: false,
             assignedTo: null
         };
@@ -654,8 +735,8 @@ class TableManager {
                 element.classList.add('occupied');
             }
             
-            element.textContent = component.name.replace(/[^\d]/g, '') || '?';
-            element.title = `${component.name} (Capacity: ${component.capacity})`;
+            element.textContent = component.id || '?';
+            element.title = `Table ${component.id}`;
             
             // Create delete X button
             const deleteBtn = document.createElement('div');
@@ -665,16 +746,14 @@ class TableManager {
             
             deleteBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                if (confirm(`Are you sure you want to delete ${component.name}?`)) {
-                    this.mapComponents = this.mapComponents.filter(c => c.id !== component.id);
-                    this.selectedComponent = null;
-                    this.renderMapComponents();
-                    this.updateComponentProperties();
-                    this.showNotification('Component deleted', 'success');
-                    
-                    // Auto-save to Firebase if we have a current map loaded from Firebase
-                    this.autoSaveToFirebase();
-                }
+                this.mapComponents = this.mapComponents.filter(c => c.id !== component.id);
+                this.selectedComponent = null;
+                this.renderMapComponents();
+                this.updateComponentProperties();
+                this.showNotification('Component deleted', 'success');
+                
+                // Auto-save to Firebase if we have a current map loaded from Firebase
+                this.autoSaveToFirebase();
             });
             
             element.appendChild(deleteBtn);
@@ -722,14 +801,10 @@ class TableManager {
         if (this.selectedComponent) {
             propertiesDiv.style.display = 'block';
             
-            const nameInput = document.getElementById('component-name');
-            const capacityInput = document.getElementById('component-capacity');
+            const numberInput = document.getElementById('component-number');
             
-            if (nameInput) {
-                nameInput.value = this.selectedComponent.name;
-            }
-            if (capacityInput) {
-                capacityInput.value = this.selectedComponent.capacity;
+            if (numberInput) {
+                numberInput.value = this.selectedComponent.id || '';
             }
         } else {
             propertiesDiv.style.display = 'none';
@@ -739,24 +814,21 @@ class TableManager {
     saveComponentProperties() {
         if (!this.selectedComponent) return;
 
-        const nameInput = document.getElementById('component-name');
-        const capacityInput = document.getElementById('component-capacity');
+        const numberInput = document.getElementById('component-number');
         
-        if (!nameInput || !capacityInput) {
+        if (!numberInput) {
             this.showNotification('Component properties form not found', 'error');
             return;
         }
 
-        const name = nameInput.value.trim();
-        const capacity = parseInt(capacityInput.value) || 1;
+        const number = parseInt(numberInput.value) || 1;
 
-        if (!name) {
-            this.showNotification('Please enter a name for the component', 'error');
+        if (!number) {
+            this.showNotification('Please enter a table number', 'error');
             return;
         }
 
-        this.selectedComponent.name = name;
-        this.selectedComponent.capacity = capacity;
+        this.selectedComponent.id = number;
         // Keep the existing type (since we removed the type selector)
 
         this.renderMapComponents();
@@ -822,21 +894,17 @@ class TableManager {
         this.mapComponents
             .filter(component => component.type === 'table')
             .forEach(component => {
-                // Extract table number from name, fallback to component counter
-                let tableNumber = parseInt(component.name.replace(/[^\d]/g, ''));
-                if (!tableNumber || isNaN(tableNumber)) {
-                    tableNumber = parseInt(component.id.replace(/[^\d]/g, '')) || 1;
-                }
+                // Use the component id directly as table number
+                let tableNumber = component.id || 1;
                 
                 tables.push({
-                    id: `table-${this.currentFloor}-${tableNumber}`,
-                    number: tableNumber,
+                    id: tableNumber,
                     floor: this.currentFloor,
                     occupied: component.occupied || false,
                     assignedTo: component.assignedTo || null,
                     x: component.x,
                     y: component.y,
-                    capacity: component.capacity || 2,
+                    capacity: 2,
                     // Mark as custom map table
                     isCustomMap: true,
                     originalComponentId: component.id
@@ -1011,41 +1079,41 @@ class TableManager {
     }
 
     // Firebase Methods
-    async getMostRecentMapForFloor(floorNumber) {
+    async getMapForFloor(floorNumber) {
         try {
-            if (!window.firebaseDB) {
-                console.log('Firebase not initialized yet');
+            console.log('Getting map for floor:', floorNumber);
+            console.log('Firebase initialized:', window.firebaseInitialized);
+            console.log('Firebase DB:', !!window.firebaseDB);
+            
+            if (!window.firebaseInitialized || !window.firebaseDB) {
+                console.log('Firebase not ready, returning null');
                 return null;
             }
 
             const mapsCollection = window.firebaseCollection(window.firebaseDB, 'maps');
-            const querySnapshot = await window.firebaseGetDocs(mapsCollection);
+            const docRef = window.firebaseDoc(mapsCollection, floorNumber.toString());
+            console.log('Document reference created for floor:', floorNumber);
             
-            let mostRecentMap = null;
-            let mostRecentDate = null;
+            const docSnapshot = await window.firebaseGetDoc(docRef);
+            console.log('Document exists:', docSnapshot.exists());
             
-            querySnapshot.forEach((doc) => {
-                const mapData = doc.data();
-                if (mapData.floor === floorNumber) {
-                    const createdAt = new Date(mapData.createdAt);
-                    if (!mostRecentDate || createdAt > mostRecentDate) {
-                        mostRecentMap = { id: doc.id, ...mapData };
-                        mostRecentDate = createdAt;
-                    }
-                }
-            });
+            if (docSnapshot.exists()) {
+                const data = docSnapshot.data();
+                console.log('Document data:', data);
+                return { id: docSnapshot.id, ...data };
+            }
             
-            return mostRecentMap;
+            console.log('No document found for floor:', floorNumber);
+            return null;
         } catch (error) {
-            console.error('Error getting most recent map for floor:', error);
+            console.error('Error getting map for floor:', error);
             return null;
         }
     }
 
     async loadFirebaseMaps() {
         try {
-            if (!window.firebaseDB) {
-                console.log('Firebase not initialized yet');
+            if (!window.firebaseInitialized || !window.firebaseDB) {
                 return;
             }
 
@@ -1057,9 +1125,10 @@ class TableManager {
             
             querySnapshot.forEach((doc) => {
                 const mapData = doc.data();
+                const floorNumber = parseInt(doc.id);
                 const option = document.createElement('option');
                 option.value = doc.id;
-                option.textContent = `${mapData.name} (Floor ${mapData.floor})`;
+                option.textContent = `${mapData.name || `Floor ${floorNumber} Map`} (Floor ${floorNumber})`;
                 mapSelect.appendChild(option);
             });
 
@@ -1083,12 +1152,8 @@ class TableManager {
                 return;
             }
 
-            const mapName = prompt('Enter a name for this map:');
-            if (!mapName) return;
-
             const mapData = {
-                name: mapName,
-                floor: this.currentFloor,
+                name: `Floor ${this.currentFloor} Map`,
                 image: this.currentMapImage,
                 components: this.mapComponents,
                 createdAt: new Date().toISOString(),
@@ -1096,7 +1161,8 @@ class TableManager {
             };
 
             const mapsCollection = window.firebaseCollection(window.firebaseDB, 'maps');
-            await window.firebaseAddDoc(mapsCollection, mapData);
+            const docRef = window.firebaseDoc(mapsCollection, this.currentFloor.toString());
+            await window.firebaseSetDoc(docRef, mapData);
             
             this.showNotification('Map saved to Firebase successfully!', 'success');
             this.loadFirebaseMaps(); // Refresh the map list
@@ -1141,7 +1207,7 @@ class TableManager {
                 this.currentMapImage = mapData.image;
                 this.mapComponents = mapData.components || [];
                 this.componentCounter = this.mapComponents.length + 1;
-                this.currentFloor = mapData.floor;
+                this.currentFloor = parseInt(selectedMapId);
                 
                 // Display the map (components will be rendered after image loads)
                 this.displayMapImage(false);
@@ -1270,7 +1336,7 @@ class TableManager {
         this.nfcAssignmentComponent = component;
         
         // Update modal content
-        document.getElementById('nfc-component-name').textContent = component.name;
+        document.getElementById('nfc-component-name').textContent = `Table ${component.id}`;
         document.getElementById('nfc-floor-number').textContent = this.currentFloor;
         
         // Reset form fields
@@ -1344,7 +1410,7 @@ class TableManager {
 
             // Write to NFC tag
             const result = await assignNFC(
-                this.nfcAssignmentComponent.name,
+                this.nfcAssignmentComponent.id,
                 apiKey,
                 ssid,
                 networkPwd
@@ -1352,7 +1418,7 @@ class TableManager {
 
             if (result.success) {
                 this.updateNFCStatus('success', 'NFC tag written successfully!');
-                this.showNotification(`NFC tag assigned to ${this.nfcAssignmentComponent.name}`, 'success');
+                this.showNotification(`NFC tag assigned to Table ${this.nfcAssignmentComponent.id}`, 'success');
                 
                 // Close modal after a short delay
                 setTimeout(() => {
@@ -1372,11 +1438,773 @@ class TableManager {
             writeBtn.textContent = 'Write NFC Tag';
         }
     }
+
+    // Real-time Table Data Methods
+    setupTableDataListener() {
+        // Clean up existing listener
+        this.cleanupTableDataListener();
+        
+        if (!window.firebaseDB || !window.firebaseOnSnapshot) {
+            console.log('Firebase not available for real-time updates');
+            return;
+        }
+
+        console.log('Setting up real-time table data listener for floor:', this.currentFloor);
+        
+        try {
+            const tableDataCollection = window.firebaseCollection(window.firebaseDB, 'tableData');
+            
+            // Set up listener for all table data
+            this.tableDataListener = window.firebaseOnSnapshot(tableDataCollection, (snapshot) => {
+                console.log('Table data changed, updating dashboard');
+                this.handleTableDataChange(snapshot);
+            }, (error) => {
+                console.error('Error in table data listener:', error);
+            });
+            
+        } catch (error) {
+            console.error('Error setting up table data listener:', error);
+        }
+    }
+
+    cleanupTableDataListener() {
+        if (this.tableDataListener) {
+            console.log('Cleaning up table data listener');
+            this.tableDataListener();
+            this.tableDataListener = null;
+        }
+    }
+
+    // Maps Real-time Listener Methods
+    setupMapsListener() {
+        if (!window.firebaseDB || !window.firebaseOnSnapshot) {
+            console.log('Firebase not initialized, skipping maps listener setup');
+            return;
+        }
+
+        // Clean up existing listener
+        this.cleanupMapsListener();
+
+        console.log('Setting up maps real-time listener');
+        
+        try {
+            const mapsCollection = window.firebaseCollection(window.firebaseDB, 'maps');
+            
+            this.mapsListener = window.firebaseOnSnapshot(mapsCollection, (snapshot) => {
+                this.handleMapsChange(snapshot);
+            }, (error) => {
+                console.error('Maps listener error:', error);
+                this.showNotification('Error listening to maps updates', 'error');
+            });
+
+            console.log('Maps real-time listener established');
+            
+        } catch (error) {
+            console.error('Error setting up maps listener:', error);
+            this.showNotification('Error setting up maps listener', 'error');
+        }
+    }
+
+    handleMapsChange(snapshot) {
+        console.log('Maps collection changed:', snapshot);
+        
+        const changes = snapshot.docChanges();
+        let hasChanges = false;
+        
+        changes.forEach((change) => {
+            const mapId = change.doc.id;
+            const mapData = change.doc.data();
+            
+            switch (change.type) {
+                case 'added':
+                    console.log(`Map added: ${mapId}`);
+                    this.currentMaps.set(mapId, { ...mapData, id: mapId });
+                    hasChanges = true;
+                    this.showMapsNotification(`New map added: ${mapData.name || `Floor ${parseInt(mapId)}`}`, 'success');
+                    break;
+                    
+                case 'modified':
+                    console.log(`Map modified: ${mapId}`);
+                    this.currentMaps.set(mapId, { ...mapData, id: mapId });
+                    hasChanges = true;
+                    this.showMapsNotification(`Map updated: ${mapData.name || `Floor ${parseInt(mapId)}`}`, 'info');
+                    break;
+                    
+                case 'removed':
+                    console.log(`Map removed: ${mapId}`);
+                    this.currentMaps.delete(mapId);
+                    hasChanges = true;
+                    this.showMapsNotification(`Map deleted: ${mapId}`, 'warning');
+                    break;
+            }
+        });
+        
+        // Update the UI if we're on the maps overview screen
+        if (hasChanges && document.getElementById('maps-screen').classList.contains('active')) {
+            this.updateMapsOverview();
+        }
+    }
+
+    updateMapsOverview() {
+        const mapsGrid = document.getElementById('maps-grid');
+        if (!mapsGrid) return;
+        
+        // Clear existing cards
+        mapsGrid.innerHTML = '';
+        
+        if (this.currentMaps.size === 0) {
+            mapsGrid.innerHTML = `
+                <div class="no-maps-placeholder" style="grid-column: 1 / -1; text-align: center; padding: 3rem;">
+                    <h3>No Maps Found</h3>
+                    <p>No maps have been created yet.</p>
+                    <button class="action-btn create-btn" onclick="window.tableManager.switchToAdmin()">Create Your First Map</button>
+                </div>
+            `;
+            return;
+        }
+        
+        // Sort maps by floor number
+        const maps = Array.from(this.currentMaps.values()).sort((a, b) => {
+            const floorA = parseInt(a.id) || 0;
+            const floorB = parseInt(b.id) || 0;
+            return floorA - floorB;
+        });
+        
+        // Create map cards
+        maps.forEach(map => {
+            const mapCard = this.createMapCard(map);
+            mapsGrid.appendChild(mapCard);
+        });
+        
+        console.log(`Updated maps overview with ${maps.length} maps`);
+    }
+
+    showMapsNotification(message, type) {
+        // Only show notifications if we're on the maps overview screen
+        if (document.getElementById('maps-screen').classList.contains('active')) {
+            this.showNotification(message, type);
+        }
+    }
+
+    cleanupMapsListener() {
+        if (this.mapsListener) {
+            console.log('Cleaning up maps listener');
+            this.mapsListener();
+            this.mapsListener = null;
+        }
+        this.currentMaps.clear();
+    }
+
+    // Map Components Real-time Listener Methods (for dashboard occupancy updates)
+    setupMapComponentsListener() {
+        if (!window.firebaseDB || !window.firebaseOnSnapshot) {
+            console.log('Firebase not initialized, skipping map components listener setup');
+            return;
+        }
+
+        // Clean up existing listener
+        this.cleanupMapComponentsListener();
+
+        console.log('Setting up map components real-time listener for floor:', this.currentFloor);
+        
+        try {
+            // Listen to the specific map document for this floor
+            const mapDoc = window.firebaseDoc(window.firebaseDB, 'maps', this.currentFloor.toString());
+            
+            this.mapComponentsListener = window.firebaseOnSnapshot(mapDoc, (docSnapshot) => {
+                this.handleMapComponentsChange(docSnapshot);
+            }, (error) => {
+                console.error('Map components listener error:', error);
+                this.showNotification('Error listening to map component updates', 'error');
+            });
+
+            console.log('Map components real-time listener established for floor:', this.currentFloor);
+            
+        } catch (error) {
+            console.error('Error setting up map components listener:', error);
+            this.showNotification('Error setting up map components listener', 'error');
+        }
+    }
+
+    handleMapComponentsChange(docSnapshot) {
+        console.log('Map components changed for floor:', this.currentFloor);
+        
+        if (!docSnapshot.exists()) {
+            console.log('Map document does not exist');
+            return;
+        }
+
+        const mapData = docSnapshot.data();
+        const newComponents = mapData.components || [];
+        
+        // Check for occupancy changes in table components
+        const tableComponents = newComponents.filter(comp => comp.type === 'table');
+        
+        tableComponents.forEach(component => {
+            const componentId = component.id.toString();
+            const currentComponent = this.currentMapComponents.get(componentId);
+            
+            console.log(`Processing component ${componentId}:`, {
+                currentOccupied: currentComponent?.occupied,
+                newOccupied: component.occupied,
+                hasChanged: currentComponent && currentComponent.occupied !== component.occupied
+            });
+            
+            // Check if occupancy status changed
+            if (currentComponent && currentComponent.occupied !== component.occupied) {
+                console.log(`Table ${componentId} occupancy changed from ${currentComponent.occupied} to ${component.occupied}`);
+                
+                // Update the dashboard UI for this table
+                this.updateDashboardTableOccupancy(componentId, component.occupied);
+                
+                // Show notification
+                const status = component.occupied ? 'occupied' : 'available';
+                this.showNotification(`Table ${componentId} is now ${status}`, component.occupied ? 'warning' : 'success');
+            }
+            
+            // Update the stored component data
+            this.currentMapComponents.set(componentId, component);
+        });
+        
+        // Handle removed components (though this is less common)
+        const currentComponentIds = new Set(tableComponents.map(comp => comp.id.toString()));
+        this.currentMapComponents.forEach((component, componentId) => {
+            if (!currentComponentIds.has(componentId)) {
+                console.log(`Table component ${componentId} was removed`);
+                this.currentMapComponents.delete(componentId);
+            }
+        });
+    }
+
+    updateDashboardTableOccupancy(tableId, isOccupied) {
+        // Find the table element in the dashboard using data attribute
+        const mapContainer = document.getElementById('table-map');
+        
+        if (!mapContainer) {
+            console.error('Map container not found');
+            return;
+        }
+        
+        console.log(`Looking for table with ID: ${tableId} (type: ${typeof tableId})`);
+        
+        // Try multiple selection methods for debugging
+        const targetTable = mapContainer.querySelector(`[data-table-id="${tableId}"]`);
+        const allTables = mapContainer.querySelectorAll('.dashboard-table-component');
+        
+        console.log(`Found ${allTables.length} table elements total`);
+        console.log('All table elements:', Array.from(allTables).map(el => ({
+            dataId: el.getAttribute('data-table-id'),
+            dataIdType: typeof el.getAttribute('data-table-id'),
+            textContent: el.children[0]?.textContent,
+            hasAttribute: el.hasAttribute('data-table-id')
+        })));
+        
+        if (!targetTable) {
+            console.log(`Table element not found for table ID: ${tableId}`);
+            // Try alternative selection methods
+            let foundTable = null;
+            allTables.forEach((el) => {
+                const dataId = el.getAttribute('data-table-id');
+                const textContent = el.children[0]?.textContent;
+                console.log(`Checking element - dataId: "${dataId}", textContent: "${textContent}", matches: ${dataId === tableId.toString()}`);
+                if (dataId === tableId.toString() || textContent === tableId.toString()) {
+                    foundTable = el;
+                }
+            });
+            
+            if (foundTable) {
+                console.log('Found table using alternative method');
+                return this.updateTableElement(foundTable, isOccupied);
+            }
+            
+            return;
+        }
+        
+        this.updateTableElement(targetTable, isOccupied);
+    }
+
+    updateTableElement(tableElement, isOccupied) {
+        const tableId = tableElement.getAttribute('data-table-id') || tableElement.children[0]?.textContent;
+        console.log(`Updating dashboard UI for table ${tableId}: ${isOccupied ? 'occupied' : 'available'}`);
+        
+        // Update the table appearance based on occupancy
+        if (isOccupied) {
+            tableElement.style.backgroundColor = 'rgba(231, 76, 60, 0.8)';
+            tableElement.style.borderColor = '#c0392b';
+        } else {
+            tableElement.style.backgroundColor = 'rgba(52, 152, 219, 0.8)';
+            tableElement.style.borderColor = '#2980b9';
+        }
+        
+        // Update occupied indicator
+        const existingIndicator = tableElement.querySelector('.occupied-indicator');
+        if (existingIndicator) {
+            existingIndicator.remove();
+        }
+        
+        if (isOccupied) {
+            const occupiedIndicator = document.createElement('div');
+            occupiedIndicator.className = 'occupied-indicator';
+            occupiedIndicator.style.position = 'absolute';
+            occupiedIndicator.style.top = '-3px';
+            occupiedIndicator.style.right = '-3px';
+            occupiedIndicator.style.backgroundColor = '#c0392b';
+            occupiedIndicator.style.color = 'white';
+            occupiedIndicator.style.borderRadius = '50%';
+            occupiedIndicator.style.width = '20px';
+            occupiedIndicator.style.height = '20px';
+            occupiedIndicator.style.display = 'flex';
+            occupiedIndicator.style.alignItems = 'center';
+            occupiedIndicator.style.justifyContent = 'center';
+            occupiedIndicator.style.fontSize = '0.8rem';
+            occupiedIndicator.textContent = '✕';
+            tableElement.appendChild(occupiedIndicator);
+        }
+        
+        // Add smooth transition effect
+        tableElement.style.transition = 'all 0.3s ease';
+    }
+
+    cleanupMapComponentsListener() {
+        if (this.mapComponentsListener) {
+            console.log('Cleaning up map components listener');
+            this.mapComponentsListener();
+            this.mapComponentsListener = null;
+        }
+        this.currentMapComponents.clear();
+    }
+
+    handleTableDataChange(snapshot) {
+        // Only update if we're on the dashboard
+        if (this.isAdminMode) {
+            return;
+        }
+
+        const mapContainer = document.getElementById('table-map');
+        if (!mapContainer || !mapContainer.querySelector('img')) {
+            // Dashboard not currently displayed
+            return;
+        }
+
+        console.log('Processing table data changes...');
+        
+        // Process each document change
+        snapshot.docChanges().forEach((change) => {
+            const docData = change.doc.data();
+            const tableId = change.doc.id;
+            
+            console.log(`Table ${tableId} changed:`, docData);
+            
+            // Update our local cache
+            if (change.type === 'removed') {
+                this.currentTableData.delete(tableId);
+            } else {
+                this.currentTableData.set(tableId, docData);
+            }
+            
+            // Update the UI for this specific table
+            this.updateTableStatusInUI(tableId, docData);
+        });
+    }
+
+    updateTableStatusInUI(tableId, tableData) {
+        // Find the table component in the current map using data attribute
+        const mapContainer = document.getElementById('table-map');
+        const targetTable = mapContainer.querySelector(`[data-table-id="${tableId}"]`);
+        
+        if (!targetTable) {
+            console.log(`Table element not found for table ID: ${tableId}`);
+            return;
+        }
+        
+        console.log(`Updating UI for table ${tableId}:`, tableData);
+        
+        // Update the table appearance based on occupancy
+        const isOccupied = tableData.checkedOut && tableData.uid && tableData.uid !== '-';
+        
+        // Update background color
+        if (isOccupied) {
+            targetTable.style.backgroundColor = 'rgba(231, 76, 60, 0.8)';
+            targetTable.style.borderColor = '#c0392b';
+        } else {
+            targetTable.style.backgroundColor = 'rgba(52, 152, 219, 0.8)';
+            targetTable.style.borderColor = '#2980b9';
+        }
+        
+        // Update occupied indicator
+        const existingIndicator = targetTable.querySelector('.occupied-indicator');
+        if (existingIndicator) {
+            existingIndicator.remove();
+        }
+        
+        if (isOccupied) {
+            const occupiedIndicator = document.createElement('div');
+            occupiedIndicator.className = 'occupied-indicator';
+            occupiedIndicator.style.position = 'absolute';
+            occupiedIndicator.style.top = '-3px';
+            occupiedIndicator.style.right = '-3px';
+            occupiedIndicator.style.backgroundColor = '#c0392b';
+            occupiedIndicator.style.color = 'white';
+            occupiedIndicator.style.borderRadius = '50%';
+            occupiedIndicator.style.width = '20px';
+            occupiedIndicator.style.height = '20px';
+            occupiedIndicator.style.display = 'flex';
+            occupiedIndicator.style.alignItems = 'center';
+            occupiedIndicator.style.justifyContent = 'center';
+            occupiedIndicator.style.fontSize = '0.8rem';
+            occupiedIndicator.textContent = '✕';
+            targetTable.appendChild(occupiedIndicator);
+        }
+        
+        // Add smooth transition effect
+        targetTable.style.transition = 'all 0.3s ease';
+        
+        // Show a brief notification for the change
+        this.showTableStatusNotification(tableId, isOccupied);
+    }
+
+    showTableStatusNotification(tableId, isOccupied) {
+        const status = isOccupied ? 'occupied' : 'available';
+        const message = `Table ${tableId} is now ${status}`;
+        
+        // Create a subtle notification
+        const notification = document.createElement('div');
+        notification.style.cssText = `
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            background-color: ${isOccupied ? '#e74c3c' : '#27ae60'};
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            z-index: 9999;
+            animation: slideIn 0.3s ease;
+            max-width: 200px;
+        `;
+        notification.textContent = message;
+        
+        document.body.appendChild(notification);
+        
+        // Remove notification after 2 seconds
+        setTimeout(() => {
+            notification.style.animation = 'slideOut 0.3s ease forwards';
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.parentNode.removeChild(notification);
+                }
+            }, 300);
+        }, 2000);
+    }
+
+    // Maps Overview Methods
+    async loadMapsOverview() {
+        const mapsGrid = document.getElementById('maps-grid');
+        mapsGrid.innerHTML = '<div class="loading-placeholder">Loading maps...</div>';
+        
+        try {
+            if (!window.firebaseDB) {
+                throw new Error('Firebase not initialized');
+            }
+
+            // If we already have maps data from the real-time listener, use it
+            if (this.currentMaps.size > 0) {
+                this.updateMapsOverview();
+                this.showNotification(`Loaded ${this.currentMaps.size} maps`, 'success');
+                return;
+            }
+
+            // Otherwise, fetch initial data
+            const mapsCollection = window.firebaseCollection(window.firebaseDB, 'maps');
+            const querySnapshot = await window.firebaseGetDocs(mapsCollection);
+            
+            if (querySnapshot.empty) {
+                mapsGrid.innerHTML = `
+                    <div class="no-maps-placeholder" style="grid-column: 1 / -1; text-align: center; padding: 3rem;">
+                        <h3>No Maps Found</h3>
+                        <p>No maps have been created yet.</p>
+                        <button class="action-btn create-btn" onclick="window.tableManager.switchToAdmin()">Create Your First Map</button>
+                    </div>
+                `;
+                return;
+            }
+
+            // Populate currentMaps with initial data
+            this.currentMaps.clear();
+            querySnapshot.forEach((doc) => {
+                const mapData = doc.data();
+                this.currentMaps.set(doc.id, {
+                    id: doc.id,
+                    ...mapData,
+                    floor: parseInt(doc.id)
+                });
+            });
+
+            // Update the UI with the loaded data
+            this.updateMapsOverview();
+            this.showNotification(`Loaded ${this.currentMaps.size} maps`, 'success');
+            
+        } catch (error) {
+            console.error('Error loading maps overview:', error);
+            mapsGrid.innerHTML = `
+                <div class="error-placeholder" style="grid-column: 1 / -1; text-align: center; padding: 3rem;">
+                    <h3>Error Loading Maps</h3>
+                    <p>Unable to load maps from Firebase.</p>
+                    <p>Please check your connection and try again.</p>
+                </div>
+            `;
+        }
+    }
+
+    createMapCard(mapData) {
+        const card = document.createElement('div');
+        card.className = 'map-card';
+        card.dataset.mapId = mapData.id;
+        
+        const componentCount = mapData.components ? mapData.components.length : 0;
+        const tableCount = mapData.components ? mapData.components.filter(c => c.type === 'table').length : 0;
+        
+        const createdDate = mapData.createdAt ? new Date(mapData.createdAt).toLocaleDateString() : 'Unknown';
+        const updatedDate = mapData.updatedAt ? new Date(mapData.updatedAt).toLocaleDateString() : 'Unknown';
+        
+        card.innerHTML = `
+            <div class="map-card-header">
+                <div class="map-card-title">${mapData.name || `Floor ${mapData.floor} Map`}</div>
+                <div class="map-card-floor">Floor ${mapData.floor}</div>
+                <div class="map-card-id">ID: ${mapData.id}</div>
+            </div>
+            
+            <div class="map-card-body">
+                <div class="map-preview">
+                    ${mapData.image ? 
+                        `<img src="${mapData.image}" alt="Map preview" onerror="this.parentElement.innerHTML='<div class=\\"map-preview-placeholder\\">Image failed to load</div>'">` :
+                        '<div class="map-preview-placeholder">No image available</div>'
+                    }
+                </div>
+                
+                <div class="map-stats">
+                    <div class="map-stat">
+                        <span class="map-stat-value">${componentCount}</span>
+                        <span class="map-stat-label">Total Components</span>
+                    </div>
+                    <div class="map-stat">
+                        <span class="map-stat-value">${tableCount}</span>
+                        <span class="map-stat-label">Tables</span>
+                    </div>
+                </div>
+                
+                <div class="map-actions">
+                    <button class="map-action-btn primary" data-action="load" data-map-id="${mapData.id}">Load Map</button>
+                    <button class="map-action-btn secondary" data-action="preview" data-map-id="${mapData.id}">Preview</button>
+                    ${this.isAuthenticated ? `<button class="map-action-btn danger" data-action="delete" data-map-id="${mapData.id}">Delete</button>` : ''}
+                </div>
+            </div>
+            
+            <div class="map-card-footer">
+                <div class="map-timestamp">
+                    <span>Created: ${createdDate}</span>
+                    <span class="map-status active">Active</span>
+                </div>
+                <div class="map-timestamp">
+                    <span>Updated: ${updatedDate}</span>
+                </div>
+            </div>
+        `;
+        
+        // Add event listeners for action buttons
+        const actionButtons = card.querySelectorAll('.map-action-btn');
+        actionButtons.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const action = btn.dataset.action;
+                const mapId = btn.dataset.mapId;
+                this.handleMapAction(action, mapId);
+            });
+        });
+        
+        return card;
+    }
+
+    async handleMapAction(action, mapId) {
+        try {
+            switch (action) {
+                case 'load':
+                    await this.loadMapInAdmin(mapId);
+                    break;
+                case 'preview':
+                    await this.previewMap(mapId);
+                    break;
+                case 'delete':
+                    await this.deleteMap(mapId);
+                    break;
+                default:
+                    console.log('Unknown action:', action);
+            }
+        } catch (error) {
+            console.error('Error handling map action:', error);
+            this.showNotification('Error performing action', 'error');
+        }
+    }
+
+    async loadMapInAdmin(mapId) {
+        // Switch to admin mode and load the map
+        this.switchToAdmin();
+        
+        // Wait a moment for the admin screen to load, then load the map
+        setTimeout(async () => {
+            try {
+                const mapDoc = window.firebaseDoc(window.firebaseDB, 'maps', mapId);
+                const docSnap = await window.firebaseGetDoc(mapDoc);
+                
+                if (docSnap.exists()) {
+                    const mapData = docSnap.data();
+                    
+                    // Update the map selector dropdown
+                    const mapSelect = document.getElementById('map-select');
+                    mapSelect.value = mapId;
+                    
+                    // Enable the load button
+                    const loadBtn = document.getElementById('load-selected-map-btn');
+                    loadBtn.disabled = false;
+                    
+                    // Load the map
+                    await this.loadSelectedFirebaseMap();
+                    
+                    this.showNotification(`Loaded map for Floor ${mapData.floor}`, 'success');
+                } else {
+                    this.showNotification('Map not found', 'error');
+                }
+            } catch (error) {
+                console.error('Error loading map:', error);
+                this.showNotification('Error loading map', 'error');
+            }
+        }, 500);
+    }
+
+    async previewMap(mapId) {
+        // Create a modal to preview the map
+        const modal = document.createElement('div');
+        modal.className = 'modal-overlay';
+        modal.style.display = 'flex';
+        
+        try {
+            const mapDoc = window.firebaseDoc(window.firebaseDB, 'maps', mapId);
+            const docSnap = await window.firebaseGetDoc(mapDoc);
+            
+            if (docSnap.exists()) {
+                const mapData = docSnap.data();
+                
+                modal.innerHTML = `
+                    <div class="modal-content" style="max-width: 80vw; max-height: 80vh; overflow: auto;">
+                        <div class="modal-header">
+                            <h3>Map Preview: ${mapData.name || `Floor ${mapData.floor}`}</h3>
+                            <button class="close-btn" onclick="this.closest('.modal-overlay').remove()">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            <div style="text-align: center; margin-bottom: 1rem;">
+                                <strong>Floor ${mapData.floor}</strong> • ${mapData.components?.length || 0} components
+                            </div>
+                            ${mapData.image ? 
+                                `<img src="${mapData.image}" style="max-width: 100%; height: auto; border-radius: 8px;" alt="Map preview">` :
+                                '<div style="text-align: center; padding: 2rem; color: #7f8c8d;">No image available</div>'
+                            }
+                        </div>
+                        <div class="modal-footer">
+                            <button class="action-btn primary-btn" onclick="window.tableManager.loadMapInAdmin('${mapId}'); this.closest('.modal-overlay').remove();">Load in Editor</button>
+                            <button class="action-btn secondary-btn" onclick="this.closest('.modal-overlay').remove();">Close</button>
+                        </div>
+                    </div>
+                `;
+            } else {
+                modal.innerHTML = `
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h3>Error</h3>
+                            <button class="close-btn" onclick="this.closest('.modal-overlay').remove()">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            <p>Map not found.</p>
+                        </div>
+                    </div>
+                `;
+            }
+        } catch (error) {
+            console.error('Error previewing map:', error);
+            modal.innerHTML = `
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>Error</h3>
+                        <button class="close-btn" onclick="this.closest('.modal-overlay').remove()">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <p>Error loading map preview.</p>
+                    </div>
+                </div>
+            `;
+        }
+        
+        document.body.appendChild(modal);
+        
+        // Close modal when clicking outside
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                modal.remove();
+            }
+        });
+    }
+
+    async deleteMap(mapId) {
+        if (!this.isAuthenticated) {
+            this.showNotification('Please log in to delete maps', 'error');
+            return;
+        }
+        
+        if (!confirm(`Are you sure you want to delete this map? This action cannot be undone.`)) {
+            return;
+        }
+        
+        try {
+            const mapDoc = window.firebaseDoc(window.firebaseDB, 'maps', mapId);
+            await window.firebaseDeleteDoc(mapDoc);
+            
+            // Remove the card from the UI
+            const card = document.querySelector(`[data-map-id="${mapId}"]`);
+            if (card) {
+                card.remove();
+            }
+            
+            this.showNotification('Map deleted successfully', 'success');
+            
+            // Refresh the maps overview
+            setTimeout(() => {
+                this.loadMapsOverview();
+            }, 1000);
+            
+        } catch (error) {
+            console.error('Error deleting map:', error);
+            this.showNotification('Error deleting map', 'error');
+        }
+    }
 }
 
 // Initialize the application when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-    window.tableManager = new TableManager();
+    // Wait for Firebase to be initialized
+    function waitForFirebaseAndInit() {
+        try {
+            if (window.firebaseInitialized && window.firebaseDB) {
+                window.tableManager = new TableManager();
+            } else {
+                setTimeout(waitForFirebaseAndInit, 100);
+            }
+        } catch (error) {
+            console.error('Error initializing TableManager:', error);
+            // Fallback: initialize without Firebase
+            window.tableManager = new TableManager();
+        }
+    }
+    
+    waitForFirebaseAndInit();
 });
 
 // Add CSS animations for notifications
