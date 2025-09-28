@@ -1,12 +1,13 @@
-const assignNFC = async (table, apiKey, ssid, networkPwd) => {
+const assignNFC = async (table, apiKey, ssid, networkPwd, apiURL) => {
 	let data = `{
         table: ${table},
         apiKey: ${apiKey},
         ssid: ${ssid},
-        networkPwd: ${networkPwd}
+        networkPwd: ${networkPwd},
+		apiURL: ${apiURL}
     }`;
 	let payload = {
-		records: [{ recordType: "text", data: data.toString() }],
+		records: [{ recordType: "text", data: data}],
 	};
 	const ndef = new NDEFReader();
 	let status = {};
