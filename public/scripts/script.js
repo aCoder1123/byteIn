@@ -180,6 +180,9 @@ class TableManager {
         document.getElementById('fullscreen-btn').addEventListener('click', () => {
             this.toggleFullscreen();
         });
+
+        // NFC Writer Modal functionality
+        this.setupNFCModal();
     }
 
     switchToDashboard() {
@@ -523,6 +526,22 @@ class TableManager {
         this.selectedComponent = null;
         this.updateComponentProperties();
         this.updateComponentSelection();
+        
+        // Update component cursor style based on tool
+        this.updateComponentCursorStyle();
+    }
+
+    updateComponentCursorStyle() {
+        const components = document.querySelectorAll('.map-component');
+        components.forEach(component => {
+            if (this.currentTool === 'assign') {
+                component.style.cursor = 'pointer';
+                component.title = 'Click to assign NFC tag';
+            } else {
+                component.style.cursor = 'default';
+                component.title = component.title.replace('Click to assign NFC tag', '').trim();
+            }
+        });
     }
 
     handleCanvasClick(e) {
@@ -662,11 +681,20 @@ class TableManager {
             
             element.addEventListener('click', (e) => {
                 e.stopPropagation();
-                this.selectComponent(component);
+                
+                // Check if we're in assign mode
+                if (this.currentTool === 'assign') {
+                    this.openNFCWriterModal(component);
+                } else {
+                    this.selectComponent(component);
+                }
             });
 
             canvas.appendChild(element);
         });
+        
+        // Update cursor styles based on current tool
+        this.updateComponentCursorStyle();
     }
 
     selectComponent(component) {
@@ -1210,6 +1238,138 @@ class TableManager {
                 console.error('Sign out error:', error);
                 this.showNotification('Error signing out', 'error');
             }
+        }
+    }
+
+    // NFC Writer Modal Methods
+    setupNFCModal() {
+        // Close modal buttons
+        document.getElementById('close-nfc-modal').addEventListener('click', () => {
+            this.closeNFCModal();
+        });
+
+        document.getElementById('cancel-nfc-btn').addEventListener('click', () => {
+            this.closeNFCModal();
+        });
+
+        // Write NFC button
+        document.getElementById('write-nfc-btn').addEventListener('click', () => {
+            this.writeNFCTag();
+        });
+
+        // Close modal when clicking outside
+        document.getElementById('nfc-writer-modal').addEventListener('click', (e) => {
+            if (e.target.id === 'nfc-writer-modal') {
+                this.closeNFCModal();
+            }
+        });
+    }
+
+    openNFCWriterModal(component) {
+        // Store the component being assigned
+        this.nfcAssignmentComponent = component;
+        
+        // Update modal content
+        document.getElementById('nfc-component-name').textContent = component.name;
+        document.getElementById('nfc-floor-number').textContent = this.currentFloor;
+        
+        // Reset form fields
+        document.getElementById('nfc-api-key').value = '';
+        document.getElementById('nfc-ssid').value = '';
+        document.getElementById('nfc-network-password').value = '';
+        
+        // Reset status
+        this.updateNFCStatus('ready', 'Ready to write NFC tag');
+        
+        // Show modal
+        document.getElementById('nfc-writer-modal').style.display = 'flex';
+    }
+
+    closeNFCModal() {
+        document.getElementById('nfc-writer-modal').style.display = 'none';
+        this.nfcAssignmentComponent = null;
+    }
+
+    updateNFCStatus(status, message) {
+        const statusElement = document.getElementById('nfc-status');
+        const statusMessage = statusElement.querySelector('.status-message');
+        
+        // Remove existing status classes
+        statusElement.classList.remove('ready', 'writing', 'success', 'error');
+        
+        // Add new status class
+        statusElement.classList.add(status);
+        
+        // Update message
+        statusMessage.innerHTML = `<p>${message}</p>`;
+        
+        if (status === 'ready') {
+            statusMessage.innerHTML += '<p class="device-info">Note: NFC writing works best on Android devices</p>';
+        }
+    }
+
+    async writeNFCTag() {
+        if (!this.nfcAssignmentComponent) {
+            this.showNotification('No component selected for NFC assignment', 'error');
+            return;
+        }
+
+        // Get form values
+        const apiKey = document.getElementById('nfc-api-key').value.trim();
+        const ssid = document.getElementById('nfc-ssid').value.trim();
+        const networkPwd = document.getElementById('nfc-network-password').value.trim();
+
+        // Validate form
+        if (!apiKey || !ssid || !networkPwd) {
+            this.showNotification('Please fill in all NFC configuration fields', 'error');
+            return;
+        }
+
+        // Update status to writing
+        this.updateNFCStatus('writing', 'Writing to NFC tag... Please hold your device close to the tag.');
+        
+        // Disable write button
+        const writeBtn = document.getElementById('write-nfc-btn');
+        writeBtn.disabled = true;
+        writeBtn.textContent = 'Writing...';
+
+        try {
+            // Import NFC utility functions
+            const { assignNFC, isNFCSupported, getNFCErrorMessage } = await import('./nfcUtil.js');
+            
+            // Check NFC support
+            if (!isNFCSupported()) {
+                throw new Error('NFC is not supported on this device. Please use an Android device with NFC capability.');
+            }
+
+            // Write to NFC tag
+            const result = await assignNFC(
+                this.nfcAssignmentComponent.name,
+                apiKey,
+                ssid,
+                networkPwd
+            );
+
+            if (result.success) {
+                this.updateNFCStatus('success', 'NFC tag written successfully!');
+                this.showNotification(`NFC tag assigned to ${this.nfcAssignmentComponent.name}`, 'success');
+                
+                // Close modal after a short delay
+                setTimeout(() => {
+                    this.closeNFCModal();
+                }, 2000);
+            } else {
+                throw result.error;
+            }
+        } catch (error) {
+            console.error('NFC write error:', error);
+            const errorMessage = error.message || 'Failed to write NFC tag';
+            this.updateNFCStatus('error', errorMessage);
+            this.showNotification(errorMessage, 'error');
+        } finally {
+            // Re-enable write button
+            writeBtn.disabled = false;
+            writeBtn.textContent = 'Write NFC Tag';
         }
     }
 }
